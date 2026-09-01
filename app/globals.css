@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --icy-ink: #111111;
+  --icy-accent: #6c3bff;
+  --icy-accent-hover: #5a2fe0;
+  --icy-surface: #ffffff;
+  --icy-canvas: #f4f4f5;
+  --icy-line: #e4e4e7;
+  --icy-muted: #71717a;
+}
+
+html, body { max-width: 100vw; overflow-x: hidden; }
+body { color: var(--icy-ink); background: var(--icy-surface); }
+
+/* Visible focus for keyboard users on every interactive control. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--icy-accent);
+  outline-offset: 2px;
+}
