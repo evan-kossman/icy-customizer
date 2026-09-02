@@ -1,27 +1,40 @@
-import { drizzle } from "drizzle-orm/postgres-js";
+import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { env } from "@/lib/env";
 import * as schema from "./schema";
 
 /**
- * Serverless-friendly connection. Vercel functions are short lived, so the
- * pool is deliberately small and cached on the module scope across warm
- * invocations.
+ * Lazily initialised database handle.
+ *
+ * The connection must NOT be created at module scope: Next.js evaluates route
+ * modules during the build, where DATABASE_URL is legitimately absent. The
+ * proxy defers both env validation and connection setup to first real query.
+ *
+ * The client is cached on globalThis so warm serverless invocations reuse a
+ * single small pool rather than opening one per request.
  */
 declare global {
-  var __icyClient: ReturnType<typeof postgres> | undefined;
+  var __icyDb: PostgresJsDatabase<typeof schema> | undefined;
+  var __icySql: ReturnType<typeof postgres> | undefined;
 }
 
-function client() {
-  if (!globalThis.__icyClient) {
-    globalThis.__icyClient = postgres(env().DATABASE_URL, {
-      max: 5,
-      idle_timeout: 20,
-      prepare: false,
-    });
-  }
-  return globalThis.__icyClient;
+function connect(): PostgresJsDatabase<typeof schema> {
+  if (globalThis.__icyDb) return globalThis.__icyDb;
+
+  globalThis.__icySql ??= postgres(env().DATABASE_URL, {
+    max: 5,
+    idle_timeout: 20,
+    prepare: false, // required for transaction-mode poolers (PgBouncer, Neon)
+  });
+
+  globalThis.__icyDb = drizzle(globalThis.__icySql, { schema });
+  return globalThis.__icyDb;
 }
 
-export const db = drizzle(client(), { schema });
+export const db = new Proxy({} as PostgresJsDatabase<typeof schema>, {
+  get(_target, prop, receiver) {
+    return Reflect.get(connect(), prop, receiver);
+  },
+});
+
 export { schema };
