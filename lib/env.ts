@@ -15,7 +15,7 @@ const schema = z.object({
   SHOPIFY_STORE_DOMAIN: z.string().min(1),
   SHOPIFY_APP_URL: z.string().url(),
   SHOPIFY_APP_PROXY_PREFIX: z.string().default("/apps/icy-customizer"),
-  SHOPIFY_API_VERSION: z.string().default("2025-01"),
+  SHOPIFY_API_VERSION: z.string().default("2026-07"),
   SHOPIFY_WEBHOOK_SECRET: z.string().optional(),
 
   // Infrastructure
