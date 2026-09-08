@@ -1,0 +1,6 @@
+name = "Icy Customizer"
+type = "theme"
+
+# Theme app extension. The merchant enables this from the theme editor
+# (Online Store > Customize > App embeds), so no Liquid file is ever edited by
+# hand and the extension can be removed cleanly.

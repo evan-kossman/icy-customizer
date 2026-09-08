@@ -1,0 +1,119 @@
+{% comment %}
+  Icy Customizer — app embed.
+
+  Renders on every storefront page but does almost nothing unless the page
+  actually contains a customizable product. Its job is to hand the browser a
+  trustworthy list of which products are customizable, sourced from the
+  icy.customizable metafield, so the JavaScript never has to guess from markup.
+
+  Nothing here modifies non-customizable products.
+{% endcomment %}
+
+{%- liquid
+  assign is_product_page = false
+  assign has_customizable = false
+
+  if template.name == 'product' and product != blank
+    assign is_product_page = true
+    if product.metafields.icy.customizable
+      assign has_customizable = true
+    endif
+  endif
+-%}
+
+{%- capture customizable_map -%}
+  {%- assign entries = '' -%}
+  {%- if is_product_page and has_customizable -%}
+    {%- assign entries = entries | append: '"' | append: product.handle | append: '":' | append: product.id -%}
+  {%- endif -%}
+
+  {%- comment -%}
+    Collection and search grids: emit an entry for each customizable product on
+    the page so cards can be upgraded without scraping the DOM.
+  {%- endcomment -%}
+  {%- if collection != blank -%}
+    {%- for item in collection.products -%}
+      {%- if item.metafields.icy.customizable -%}
+        {%- if entries != '' -%}{%- assign entries = entries | append: ',' -%}{%- endif -%}
+        {%- assign entries = entries | append: '"' | append: item.handle | append: '":' | append: item.id -%}
+      {%- endif -%}
+    {%- endfor -%}
+  {%- endif -%}
+
+  {%- if search.performed -%}
+    {%- for item in search.results -%}
+      {%- if item.object_type == 'product' and item.metafields.icy.customizable -%}
+        {%- if entries != '' -%}{%- assign entries = entries | append: ',' -%}{%- endif -%}
+        {%- assign entries = entries | append: '"' | append: item.handle | append: '":' | append: item.id -%}
+      {%- endif -%}
+    {%- endfor -%}
+  {%- endif -%}
+
+  {{ entries }}
+{%- endcapture -%}
+
+{%- assign customizable_map = customizable_map | strip -%}
+
+{%- if block.settings.enabled -%}
+  <script type="application/json" id="icy-customizer-config">
+    {
+      "proxyBase": {{ block.settings.proxy_base | default: '/apps/icy-customizer' | json }},
+      "buttonLabel": {{ block.settings.button_label | default: 'CUSTOMIZE' | json }},
+      "accent": {{ block.settings.accent_color | default: '#6C3BFF' | json }},
+      "replaceOnCollection": {{ block.settings.replace_on_collection | json }},
+      "isProductPage": {{ is_product_page | json }},
+      "currentProduct": {%- if is_product_page -%}{
+        "id": {{ product.id | json }},
+        "handle": {{ product.handle | json }},
+        "customizable": {{ has_customizable | json }}
+      }{%- else -%}null{%- endif -%},
+      "customizable": { {{ customizable_map }} },
+      "cartUrl": {{ routes.cart_url | json }},
+      "customerId": {{ customer.id | default: nil | json }}
+    }
+  </script>
+
+  {{ 'icy-customizer.css' | asset_url | stylesheet_tag }}
+  <script src="{{ 'icy-customizer.js' | asset_url }}" defer></script>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Icy Customizer",
+  "target": "body",
+  "settings": [
+    {
+      "type": "checkbox",
+      "id": "enabled",
+      "label": "Enable customizer",
+      "default": true,
+      "info": "Only affects products with the icy.customizable metafield turned on."
+    },
+    {
+      "type": "text",
+      "id": "button_label",
+      "label": "Button label",
+      "default": "CUSTOMIZE"
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "Button colour",
+      "default": "#6C3BFF"
+    },
+    {
+      "type": "checkbox",
+      "id": "replace_on_collection",
+      "label": "Replace Add to Cart on collection pages",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "proxy_base",
+      "label": "App proxy path",
+      "default": "/apps/icy-customizer",
+      "info": "Must match the App Proxy subpath configured for the app."
+    }
+  ]
+}
+{% endschema %}
