@@ -1,0 +1,46 @@
+/**
+ * Icy Customizer — storefront styles.
+ * Deliberately minimal and namespaced so nothing leaks into theme styles.
+ */
+
+.icy-customize-btn {
+  --icy-accent: #6c3bff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.875rem 1.75rem;
+  min-height: 44px; /* accessible touch target */
+  border: none;
+  border-radius: 8px;
+  background: var(--icy-accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-decoration: none;
+  text-align: center;
+  cursor: pointer;
+  transition: filter 0.15s ease, transform 0.15s ease;
+}
+
+.icy-customize-btn:hover { filter: brightness(0.92); color: #fff; }
+.icy-customize-btn:active { transform: translateY(1px); }
+
+.icy-customize-btn:focus-visible {
+  outline: 2px solid var(--icy-accent);
+  outline-offset: 3px;
+}
+
+.icy-customize-btn--block { display: flex; width: 100%; }
+
+.icy-customize-btn--card {
+  width: 100%;
+  padding: 0.625rem 1rem;
+  font-size: 0.8125rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .icy-customize-btn { transition: none; }
+}
