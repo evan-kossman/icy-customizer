@@ -7,7 +7,7 @@ import {
   requireProxyContext,
   toProductGid,
 } from "@/lib/shopify/proxy-context";
-import { fetchProduct } from "@/lib/shopify/admin";
+import { fetchProduct, fetchProductByHandle } from "@/lib/shopify/admin";
 import { buildPrintArea } from "@/lib/design";
 import { publicUrl } from "@/lib/storage";
 import { env } from "@/lib/env";
@@ -23,18 +23,35 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   try {
     const ctx = await requireProxyContext(req);
-    const raw = req.nextUrl.searchParams.get("productId");
-    if (!raw) {
-      return NextResponse.json({ error: "productId is required." }, { status: 400 });
+    const rawId = req.nextUrl.searchParams.get("productId");
+    const handle = req.nextUrl.searchParams.get("handle");
+    if (!rawId && !handle) {
+      return NextResponse.json(
+        { error: "A productId or handle is required." },
+        { status: 400 }
+      );
     }
 
-    const productId = toProductGid(raw);
-    const config = await requireProductConfig(ctx.shop.id, productId);
-    const product = await fetchProduct(ctx.shop, productId);
+    // Resolve by id when the theme extension supplied one, otherwise by the
+    // handle carried in the storefront link.
+    const product = rawId
+      ? await fetchProduct(ctx.shop, toProductGid(rawId))
+      : await fetchProductByHandle(ctx.shop, handle!);
 
     if (!product) {
       return NextResponse.json({ error: "Product not found." }, { status: 404 });
     }
+
+    // Two independent gates: the merchant-facing metafield and an enabled
+    // configuration row. Both must agree before the customizer will open.
+    if (!product.customizable) {
+      return NextResponse.json(
+        { error: "This product is not available for customization." },
+        { status: 404 }
+      );
+    }
+
+    const config = await requireProductConfig(ctx.shop.id, product.id);
 
     const mockupRows = await db
       .select()
@@ -115,7 +132,7 @@ export async function GET(req: NextRequest) {
     if (err instanceof ProxyAuthError) {
       return NextResponse.json({ error: err.message }, { status: err.status });
     }
-    console.error("[proxy/config]", err);
+    console.error("[proxy/api/config]", err);
     return NextResponse.json({ error: "Could not load the product configuration." }, { status: 500 });
   }
 }

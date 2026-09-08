@@ -3,6 +3,14 @@ import type { NextConfig } from "next";
 const config: NextConfig = {
   reactStrictMode: true,
   serverExternalPackages: ["sharp"],
+  webpack(config) {
+    // Konva ships a Node build that requires the native `canvas` package for
+    // server-side rendering. The editor is client-only (dynamic, ssr:false),
+    // so the dependency is stubbed rather than installed — `canvas` needs
+    // native build tooling that serverless builds do not have.
+    config.resolve.alias = { ...config.resolve.alias, canvas: false };
+    return config;
+  },
   async headers() {
     return [
       {

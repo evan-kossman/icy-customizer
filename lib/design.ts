@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 /**
  * The design coordinate system.
  *
@@ -216,8 +214,11 @@ export function validateDesign(design: DesignDocument): ValidationResult {
 /**
  * Deterministic hash of the meaningful design state. Used to detect duplicate
  * renders and to tie cart lines to a design — never as an authorisation token.
+ *
+ * Uses Web Crypto rather than node:crypto so the same function runs in the
+ * editor and on the server, guaranteeing both sides agree on the hash.
  */
-export function designHash(design: DesignDocument): string {
+export function designFingerprint(design: DesignDocument): string {
   const round = (n: number) => Math.round(n * 1000) / 1000;
   const normalised = {
     p: design.productId,
@@ -243,9 +244,15 @@ export function designHash(design: DesignDocument): string {
           : [...base, o.assetId, o.backgroundRemoved];
       }),
   };
-  return createHash("sha256")
-    .update(JSON.stringify(normalised))
-    .digest("hex")
+  return JSON.stringify(normalised);
+}
+
+export async function designHash(design: DesignDocument): Promise<string> {
+  const data = new TextEncoder().encode(designFingerprint(design));
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
     .slice(0, 32);
 }
 
