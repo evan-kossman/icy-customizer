@@ -67,6 +67,20 @@ export default function CustomizerClient({
     };
   }, [proxyBase, productHandle, productId]);
 
+  // Load custom @font-face entries so Konva canvas text renders them.
+  useEffect(() => {
+    if (!bootstrap) return;
+    for (const font of bootstrap.fonts) {
+      if (!font.url) continue;
+      const face = new FontFace(font.family, `url("${font.url}")`);
+      face.load().then((loaded) => {
+        document.fonts.add(loaded);
+      }).catch(() => {
+        // Non-fatal — canvas will fall back to system font.
+      });
+    }
+  }, [bootstrap]);
+
   if (error) {
     return (
       <main className="mx-auto max-w-md p-8">
