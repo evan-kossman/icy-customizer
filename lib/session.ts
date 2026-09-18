@@ -60,7 +60,8 @@ export async function requireOwnedSession(opts: {
   }
 
   if (session.status === "expired" || session.expiresAt < new Date()) {
-    throw new SessionError("This design session has expired.", 410);
+    const exp = session.expiresAt instanceof Date ? session.expiresAt.toISOString() : String(session.expiresAt);
+    throw new SessionError(`Session expired [status=${session.status} expiresAt=${exp} now=${new Date().toISOString()} token_match=${ownsByToken} customer_match=${ownsByCustomer}]`, 410);
   }
 
   return session;
