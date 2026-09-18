@@ -394,7 +394,7 @@ export default function Customizer({
         </button>
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/icy-logo.avif" alt="Icy" className="h-8 w-auto" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+          <img src={`${process.env.NEXT_PUBLIC_APP_URL ?? "https://wearicy-customizer.vercel.app"}/icy-logo.avif`} alt="Icy" className="h-8 w-auto" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
         </div>
         <span className="hidden text-xs text-white/50 sm:block" aria-live="polite">
           {saveLabel}
