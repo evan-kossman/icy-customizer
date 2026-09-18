@@ -225,10 +225,17 @@ export default function CanvasStage({
         )}
       </Layer>
 
-      {/* Artwork, positioned relative to the print area origin. */}
+      {/* Artwork, clipped to the print area so overflow is hidden. */}
       <Layer ref={layerRef}>
-        <Group x={clipX} y={clipY}>
-          {ordered.map(renderObject)}
+        <Group
+          clipX={clipX}
+          clipY={clipY}
+          clipWidth={clipW}
+          clipHeight={clipH}
+        >
+          <Group x={clipX} y={clipY}>
+            {ordered.map(renderObject)}
+          </Group>
         </Group>
 
         <Transformer

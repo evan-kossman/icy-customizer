@@ -1,6 +1,6 @@
 "use client";
 
-import { Card, Button, Field, inputClass } from "../ui";
+import { Card, Button } from "../ui";
 import type { TextObject } from "@/lib/design";
 import type { EditorFont } from "@/lib/editor/types";
 
@@ -11,211 +11,193 @@ interface Props {
   onAdd: () => void;
   onChange: (patch: Partial<TextObject>) => void;
   onDelete: () => void;
+  /** All text objects currently on the canvas */
+  textObjects?: TextObject[];
 }
 
-/** Font sizes are stored in print pixels; the UI shows points for familiarity. */
-function pxToPt(px: number, dpi: number) {
-  return Math.round((px / dpi) * 72);
-}
-function ptToPx(pt: number, dpi: number) {
-  return Math.round((pt / 72) * dpi);
+const TEXT_OPTION_1 = { label: "TEXT OPTION 1", maxChars: 20 };
+const TEXT_OPTION_2 = { label: "TEXT OPTION 2", maxChars: 30 };
+
+function optionFor(index: number) {
+  return index === 0 ? TEXT_OPTION_1 : TEXT_OPTION_2;
 }
 
 export default function TextPanel({
   fonts,
   selected,
-  printDpi,
+  printDpi: _printDpi,
   onAdd,
   onChange,
   onDelete,
+  textObjects = [],
 }: Props) {
+  const selectedIndex = selected
+    ? textObjects.findIndex((t) => t.id === selected.id)
+    : -1;
+  const option = selectedIndex >= 0 ? optionFor(selectedIndex) : null;
+  const canAdd = textObjects.length < 2;
+
   return (
-    <Card
-      title="Text"
-      action={
-        <Button variant="ghost" onClick={onAdd}>
-          + Add text
-        </Button>
-      }
-    >
-      {!selected ? (
-        <p className="text-xs text-muted">
-          Add text, or select a text layer on the canvas to edit it.
-        </p>
-      ) : (
-        <div className="space-y-3">
-          <Field label="Text">
-            <textarea
-              value={selected.text}
-              onChange={(e) => onChange({ text: e.target.value })}
-              rows={2}
-              className={inputClass}
-            />
-          </Field>
+    <Card title="Add Your Text">
+      <div className="space-y-3">
+        {/* Slot 1 */}
+        <TextSlot
+          label={TEXT_OPTION_1.label}
+          maxChars={TEXT_OPTION_1.maxChars}
+          object={textObjects[0] ?? null}
+          fonts={fonts}
+          isSelected={selectedIndex === 0}
+          onChange={onChange}
+          onDelete={onDelete}
+          onAdd={textObjects.length === 0 ? onAdd : undefined}
+        />
 
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Font">
-              <select
-                value={selected.fontFamily}
-                onChange={(e) => onChange({ fontFamily: e.target.value })}
-                className={inputClass}
-                style={{ fontFamily: selected.fontFamily }}
-              >
-                {fonts.map((font) => (
-                  <option key={font.id} value={font.family} style={{ fontFamily: font.family }}>
-                    {font.displayName}
-                  </option>
-                ))}
-              </select>
-            </Field>
+        {/* Slot 2 — only show if slot 1 has text */}
+        {textObjects.length >= 1 && (
+          <TextSlot
+            label={TEXT_OPTION_2.label}
+            maxChars={TEXT_OPTION_2.maxChars}
+            object={textObjects[1] ?? null}
+            fonts={fonts}
+            isSelected={selectedIndex === 1}
+            onChange={onChange}
+            onDelete={onDelete}
+            onAdd={textObjects.length === 1 ? onAdd : undefined}
+          />
+        )}
 
-            <Field label="Size (pt)">
-              <input
-                type="number"
-                min={6}
-                max={400}
-                value={pxToPt(selected.fontSize, printDpi)}
-                onChange={(e) =>
-                  onChange({ fontSize: ptToPx(Number(e.target.value) || 12, printDpi) })
-                }
-                className={inputClass}
-              />
-            </Field>
-          </div>
+        {selected && option && (
+          <div className="rounded-xl border border-line bg-canvas p-3 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted">{option.label} — Style</p>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Colour">
-              <input
-                type="color"
-                value={selected.fill}
-                onChange={(e) => onChange({ fill: e.target.value })}
-                className="h-10 w-full cursor-pointer rounded-lg border border-line"
-                aria-label="Text colour"
-              />
-            </Field>
-
-            <Field label="Alignment">
-              <select
-                value={selected.align}
-                onChange={(e) =>
-                  onChange({ align: e.target.value as TextObject["align"] })
-                }
-                className={inputClass}
-              >
-                <option value="left">Left</option>
-                <option value="center">Centre</option>
-                <option value="right">Right</option>
-              </select>
-            </Field>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant={selected.fontWeight >= 600 ? "primary" : "secondary"}
-              onClick={() => onChange({ fontWeight: selected.fontWeight >= 600 ? 400 : 700 })}
-              aria-pressed={selected.fontWeight >= 600}
-            >
-              <span className="font-bold">B</span>
-            </Button>
-            <Button
-              variant={selected.italic ? "primary" : "secondary"}
-              onClick={() => onChange({ italic: !selected.italic })}
-              aria-pressed={selected.italic}
-            >
-              <span className="italic">I</span>
-            </Button>
-            <Button
-              variant={selected.underline ? "primary" : "secondary"}
-              onClick={() => onChange({ underline: !selected.underline })}
-              aria-pressed={selected.underline}
-            >
-              <span className="underline">U</span>
-            </Button>
-            <Button
-              variant={selected.uppercase ? "primary" : "secondary"}
-              onClick={() => onChange({ uppercase: !selected.uppercase })}
-              aria-pressed={selected.uppercase}
-            >
-              AA
-            </Button>
-          </div>
-
-          <details className="rounded-lg border border-line px-3 py-2">
-            <summary className="cursor-pointer text-xs font-medium">
-              Spacing, outline and shadow
-            </summary>
-            <div className="mt-3 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Letter spacing">
-                  <input
-                    type="number"
-                    value={Math.round(selected.letterSpacing)}
-                    onChange={(e) => onChange({ letterSpacing: Number(e.target.value) || 0 })}
-                    className={inputClass}
-                  />
-                </Field>
-                <Field label="Line height">
-                  <input
-                    type="number"
-                    step={0.1}
-                    min={0.5}
-                    max={3}
-                    value={selected.lineHeight}
-                    onChange={(e) => onChange({ lineHeight: Number(e.target.value) || 1 })}
-                    className={inputClass}
-                  />
-                </Field>
+            {/* Font family */}
+            {fonts.length > 0 && (
+              <div>
+                <label className="mb-1 block text-xs font-medium text-ink">Font</label>
+                <select
+                  value={selected.fontFamily}
+                  onChange={(e) => onChange({ fontFamily: e.target.value })}
+                  className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm focus:border-accent focus:outline-none"
+                  style={{ fontFamily: selected.fontFamily }}
+                >
+                  {fonts.map((font) => (
+                    <option key={font.id} value={font.family} style={{ fontFamily: font.family }}>
+                      {font.displayName}
+                    </option>
+                  ))}
+                </select>
               </div>
+            )}
 
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Outline colour">
-                  <input
-                    type="color"
-                    value={selected.strokeColor ?? "#000000"}
-                    onChange={(e) => onChange({ strokeColor: e.target.value })}
-                    className="h-10 w-full cursor-pointer rounded-lg border border-line"
-                    aria-label="Outline colour"
-                  />
-                </Field>
-                <Field label="Outline width">
-                  <input
-                    type="number"
-                    min={0}
-                    value={selected.strokeWidth ?? 0}
-                    onChange={(e) => onChange({ strokeWidth: Number(e.target.value) || 0 })}
-                    className={inputClass}
-                  />
-                </Field>
+            {/* Colour + alignment */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-ink">Colour</label>
+                <input
+                  type="color"
+                  value={selected.fill}
+                  onChange={(e) => onChange({ fill: e.target.value })}
+                  className="h-10 w-full cursor-pointer rounded-lg border border-line"
+                  aria-label="Text colour"
+                />
               </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Shadow colour">
-                  <input
-                    type="color"
-                    value={selected.shadowColor ?? "#000000"}
-                    onChange={(e) => onChange({ shadowColor: e.target.value })}
-                    className="h-10 w-full cursor-pointer rounded-lg border border-line"
-                    aria-label="Shadow colour"
-                  />
-                </Field>
-                <Field label="Shadow blur">
-                  <input
-                    type="number"
-                    min={0}
-                    value={selected.shadowBlur ?? 0}
-                    onChange={(e) => onChange({ shadowBlur: Number(e.target.value) || 0 })}
-                    className={inputClass}
-                  />
-                </Field>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-ink">Align</label>
+                <div className="flex gap-1">
+                  {(["left", "center", "right"] as const).map((a) => (
+                    <button
+                      key={a}
+                      onClick={() => onChange({ align: a })}
+                      className={`flex-1 rounded-lg border py-2 text-xs transition-colors ${
+                        selected.align === a
+                          ? "border-ink bg-ink text-white"
+                          : "border-line bg-white text-ink hover:bg-canvas"
+                      }`}
+                      aria-pressed={selected.align === a}
+                    >
+                      {a === "left" ? "≡" : a === "center" ? "≡" : "≡"}
+                      {a === "left" ? "L" : a === "center" ? "C" : "R"}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-          </details>
 
-          <Button variant="danger" onClick={onDelete} className="w-full">
-            Delete text
-          </Button>
-        </div>
-      )}
+            {/* Style toggles */}
+            <div className="flex gap-2">
+              {[
+                { label: <strong>B</strong>, key: "bold" as const, active: selected.fontWeight >= 600, action: () => onChange({ fontWeight: selected.fontWeight >= 600 ? 400 : 700 }) },
+                { label: <em>I</em>, key: "italic" as const, active: selected.italic, action: () => onChange({ italic: !selected.italic }) },
+                { label: <span className="uppercase tracking-widest text-[10px]">AA</span>, key: "upper" as const, active: selected.uppercase, action: () => onChange({ uppercase: !selected.uppercase }) },
+              ].map(({ label, key, active, action }) => (
+                <button
+                  key={key}
+                  onClick={action}
+                  className={`h-9 w-9 rounded-lg border text-sm transition-colors ${
+                    active ? "border-ink bg-ink text-white" : "border-line bg-white text-ink hover:bg-canvas"
+                  }`}
+                  aria-pressed={active}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <Button variant="danger" onClick={onDelete} className="w-full">
+              Remove
+            </Button>
+          </div>
+        )}
+      </div>
     </Card>
+  );
+}
+
+interface SlotProps {
+  label: string;
+  maxChars: number;
+  object: TextObject | null;
+  fonts: EditorFont[];
+  isSelected: boolean;
+  onChange: (patch: Partial<TextObject>) => void;
+  onDelete: () => void;
+  onAdd?: () => void;
+}
+
+function TextSlot({ label, maxChars, object, isSelected, onChange, onDelete, onAdd }: SlotProps) {
+  const charCount = object?.text?.length ?? 0;
+
+  if (!object) {
+    return (
+      <button
+        onClick={onAdd}
+        className="w-full rounded-xl border-2 border-dashed border-line py-4 text-center transition-colors hover:border-ink hover:bg-canvas"
+      >
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted">{label}</p>
+        <p className="mt-1 text-xs text-muted">Tap to add</p>
+      </button>
+    );
+  }
+
+  return (
+    <div className={`rounded-xl border-2 p-3 transition-colors ${isSelected ? "border-ink" : "border-line"}`}>
+      <div className="mb-1.5 flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted">{label}</p>
+        <span className={`text-xs ${charCount >= maxChars ? "text-red-500" : "text-muted"}`}>
+          {charCount}/{maxChars}
+        </span>
+      </div>
+      <textarea
+        value={object.text}
+        onChange={(e) => {
+          const val = e.target.value.slice(0, maxChars);
+          onChange({ text: val });
+        }}
+        maxLength={maxChars}
+        rows={2}
+        placeholder="Enter text…"
+        className="w-full resize-none rounded-lg border border-line bg-white px-3 py-2 text-sm focus:border-ink focus:outline-none"
+      />
+    </div>
   );
 }

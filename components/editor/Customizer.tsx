@@ -380,13 +380,23 @@ export default function Customizer({
   }[saveStatus];
 
   return (
-    <div className="min-h-screen bg-canvas">
-      <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-line bg-surface px-4 py-3">
-        <button onClick={onClose} className="text-sm text-muted hover:text-ink" aria-label="Close customizer">
-          ← Back
+    <div className="min-h-screen bg-white">
+      <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3" style={{ background: "#171717" }}>
+        <button
+          onClick={onClose}
+          aria-label="Close customizer"
+          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M10 12L6 8l4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Back
         </button>
-        <h1 className="truncate text-sm font-semibold">{product.title}</h1>
-        <span className="hidden text-xs text-muted sm:block" aria-live="polite">
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/icy-logo.avif" alt="Icy" className="h-8 w-auto" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+        </div>
+        <span className="hidden text-xs text-white/50 sm:block" aria-live="polite">
           {saveLabel}
         </span>
       </header>
@@ -535,6 +545,7 @@ export default function Customizer({
               onDelete={() =>
                 current.selectedId && dispatch({ type: "remove-object", id: current.selectedId })
               }
+              textObjects={current.design.objects.filter((o) => o.type === "text") as TextObject[]}
             />
           )}
 

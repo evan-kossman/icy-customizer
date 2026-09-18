@@ -1,9 +1,8 @@
 #!/usr/bin/env tsx
 /**
- * Icy Customizer — database + R2 seed script.
+ * Icy Customizer — database seed script.
  *
- * Idempotent: safe to run more than once.  Existing rows are left unchanged
- * (upsert by unique index).
+ * Idempotent: safe to run more than once. Existing rows are left unchanged.
  *
  * Usage:
  *   npx tsx scripts/seed.ts \
@@ -13,32 +12,23 @@
  *     [--tee-white    path/to/tee-white.png]    \
  *     [--hoodie-black path/to/hoodie-black.png] \
  *     [--hoodie-white path/to/hoodie-white.png]
- *
- * Mockup paths are optional on first run and can be added later.
- * Product IDs are the numeric Shopify IDs visible in the admin URL, e.g. 7652341760193.
- *
- * Prerequisites:
- *   - App installed on wearicy.myshopify.com (OAuth callback ran, shop row exists)
- *   - .env.local is present with DATABASE_URL, STORAGE_* vars, etc.
  */
 
-import "dotenv/config";
+import { config } from "dotenv";
+config({ path: ".env.local" });
+
 import { readFileSync } from "node:fs";
 import { extname, resolve } from "node:path";
-import {
-  S3Client,
-  PutObjectCommand,
-  HeadObjectCommand,
-} from "@aws-sdk/client-s3";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { eq, and } from "drizzle-orm";
 import * as schema from "../db/schema";
 import { createId } from "../lib/id";
+import { putObject, objectExists, StorageKeys } from "../lib/storage";
 import sharp from "sharp";
 
 // ---------------------------------------------------------------------------
-// CLI arg parsing
+// CLI args
 // ---------------------------------------------------------------------------
 
 const args = process.argv.slice(2);
@@ -53,12 +43,13 @@ const TEE_BLACK = flag("tee-black");
 const TEE_WHITE = flag("tee-white");
 const HOODIE_BLACK = flag("hoodie-black");
 const HOODIE_WHITE = flag("hoodie-white");
+const TEE_BLACK_VARIANT = flag("tee-black-variant");
+const TEE_WHITE_VARIANT = flag("tee-white-variant");
+const HOODIE_BLACK_VARIANT = flag("hoodie-black-variant");
+const HOODIE_WHITE_VARIANT = flag("hoodie-white-variant");
 
 if (!TEE_ID && !HOODIE_ID) {
-  console.error(
-    "Error: at least one of --tee-id or --hoodie-id is required.\n" +
-      "Run: npx tsx scripts/seed.ts --tee-id <ID> --hoodie-id <ID>"
-  );
+  console.error("Error: at least one of --tee-id or --hoodie-id is required.");
   process.exit(1);
 }
 
@@ -73,29 +64,14 @@ function requireEnv(key: string): string {
 }
 
 const DATABASE_URL = requireEnv("DATABASE_URL");
-const STORAGE_ENDPOINT = requireEnv("STORAGE_ENDPOINT");
-const STORAGE_REGION = process.env.STORAGE_REGION ?? "auto";
-const STORAGE_ACCESS_KEY = requireEnv("STORAGE_ACCESS_KEY");
-const STORAGE_SECRET_KEY = requireEnv("STORAGE_SECRET_KEY");
-const STORAGE_BUCKET = requireEnv("STORAGE_BUCKET");
 const SHOPIFY_STORE_DOMAIN = requireEnv("SHOPIFY_STORE_DOMAIN");
 
 // ---------------------------------------------------------------------------
-// Clients
+// DB client
 // ---------------------------------------------------------------------------
 
 const sql = postgres(DATABASE_URL, { max: 1, prepare: false });
 const db = drizzle(sql, { schema });
-
-const s3 = new S3Client({
-  region: STORAGE_REGION,
-  endpoint: STORAGE_ENDPOINT,
-  credentials: {
-    accessKeyId: STORAGE_ACCESS_KEY,
-    secretAccessKey: STORAGE_SECRET_KEY,
-  },
-  forcePathStyle: true,
-});
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -110,14 +86,12 @@ async function findShop() {
   if (!rows[0]) {
     throw new Error(
       `No shop row found for ${SHOPIFY_STORE_DOMAIN}.\n` +
-        "Install the app by visiting:\n" +
-        "  https://wearicy-customizer.vercel.app/api/auth?shop=wearicy.myshopify.com"
+        "Install the app first: https://icy-customizer.vercel.app/api/auth?shop=wearicy.myshopify.com"
     );
   }
   return rows[0];
 }
 
-/** Upload a file to R2 if the key doesn't already exist. Returns the key. */
 async function uploadMockup(
   shopId: string,
   filePath: string,
@@ -125,31 +99,20 @@ async function uploadMockup(
 ): Promise<{ assetKey: string; width: number; height: number }> {
   const abs = resolve(filePath);
   const ext = extname(abs).slice(1).toLowerCase() || "png";
-  const key = `shops/${shopId}/mockups/${label}.${ext}`;
+  const key = StorageKeys.mockup(shopId, label);
+  const contentType = `image/${ext === "jpg" ? "jpeg" : ext}`;
 
-  // Skip upload if the object already exists.
-  try {
-    await s3.send(new HeadObjectCommand({ Bucket: STORAGE_BUCKET, Key: key }));
-    console.log(`  ✓ ${label}: already in R2 (key: ${key})`);
-  } catch {
+  const exists = await objectExists(key);
+  if (exists) {
+    console.log(`  ✓ ${label}: already in Blob`);
+  } else {
     const buf = readFileSync(abs);
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: STORAGE_BUCKET,
-        Key: key,
-        Body: buf,
-        ContentType: `image/${ext === "jpg" ? "jpeg" : ext}`,
-      })
-    );
-    console.log(`  ↑ ${label}: uploaded (key: ${key})`);
+    await putObject(key, buf, contentType);
+    console.log(`  ↑ ${label}: uploaded to Vercel Blob`);
   }
 
-  const meta = await sharp(resolve(filePath)).metadata();
-  return {
-    assetKey: key,
-    width: meta.width ?? 0,
-    height: meta.height ?? 0,
-  };
+  const meta = await sharp(abs).metadata();
+  return { assetKey: key, width: meta.width ?? 0, height: meta.height ?? 0 };
 }
 
 async function upsertProductConfig(
@@ -157,9 +120,6 @@ async function upsertProductConfig(
   shopifyProductId: string,
   productType: string
 ) {
-  // Tee and hoodie both use a 16×21 in print area at 300dpi.
-  // The print area sits in the middle of the mockup: X=25%, Y=22%, W=50%, H=50%.
-  // These fractions can be tuned per-mockup after visual inspection.
   const base = {
     shopId,
     shopifyProductId: `gid://shopify/Product/${shopifyProductId}`,
@@ -172,17 +132,16 @@ async function upsertProductConfig(
     printAreaY: 0.22,
     printAreaWidth: 0.5,
     printAreaHeight: 0.5,
-    aiEnabled: false,           // frozen for v1
+    aiEnabled: false,
     backgroundRemovalEnabled: true,
     textEnabled: true,
-    stickersEnabled: false,     // frozen for v1
-    maxUploads: 6,
+    stickersEnabled: false,
+    maxUploads: 2,
     maxUploadBytes: 10 * 1024 * 1024,
     stickerCategories: [] as string[],
     fontIds: [] as string[],
   };
 
-  // Check if a row already exists.
   const existing = await db
     .select({ id: schema.productConfigs.id })
     .from(schema.productConfigs)
@@ -212,6 +171,7 @@ async function upsertMockup(opts: {
   assetKey: string;
   width: number;
   height: number;
+  shopifyVariantId?: string | null;
 }) {
   const existing = await db
     .select({ id: schema.mockups.id })
@@ -234,6 +194,9 @@ async function upsertMockup(opts: {
     productConfigId: opts.productConfigId,
     colorName: opts.colorName,
     colorHex: opts.colorHex,
+    shopifyVariantId: opts.shopifyVariantId
+      ? `gid://shopify/ProductVariant/${opts.shopifyVariantId}`
+      : null,
     assetKey: opts.assetKey,
     width: opts.width,
     height: opts.height,
@@ -253,56 +216,48 @@ async function main() {
   const shop = await findShop();
   console.log("Shop id:", shop.id);
 
-  // ---- Tee ----------------------------------------------------------------
   if (TEE_ID) {
     console.log("\n[ T-Shirt ]");
     const configId = await upsertProductConfig(shop.id, TEE_ID, "tshirt");
 
     if (TEE_BLACK) {
       const asset = await uploadMockup(shop.id, TEE_BLACK, "tee-black");
-      await upsertMockup({ productConfigId: configId, colorName: "Black", colorHex: "#000000", ...asset });
+      await upsertMockup({ productConfigId: configId, colorName: "Black", colorHex: "#000000", shopifyVariantId: TEE_BLACK_VARIANT, ...asset });
     } else {
-      console.log("  — No --tee-black path supplied; skipping mockup upload.");
-      console.log("    Run with --tee-black <path> to add it later.");
+      console.log("  — No --tee-black supplied; skipping mockup upload.");
     }
 
     if (TEE_WHITE) {
       const asset = await uploadMockup(shop.id, TEE_WHITE, "tee-white");
-      await upsertMockup({ productConfigId: configId, colorName: "White", colorHex: "#FFFFFF", ...asset });
+      await upsertMockup({ productConfigId: configId, colorName: "White", colorHex: "#FFFFFF", shopifyVariantId: TEE_WHITE_VARIANT, ...asset });
     } else {
-      console.log("  — No --tee-white path supplied; skipping mockup upload.");
+      console.log("  — No --tee-white supplied; skipping mockup upload.");
     }
   }
 
-  // ---- Hoodie -------------------------------------------------------------
   if (HOODIE_ID) {
     console.log("\n[ Hoodie ]");
     const configId = await upsertProductConfig(shop.id, HOODIE_ID, "hoodie");
 
     if (HOODIE_BLACK) {
       const asset = await uploadMockup(shop.id, HOODIE_BLACK, "hoodie-black");
-      await upsertMockup({ productConfigId: configId, colorName: "Black", colorHex: "#000000", ...asset });
+      await upsertMockup({ productConfigId: configId, colorName: "Black", colorHex: "#000000", shopifyVariantId: TEE_BLACK_VARIANT, ...asset });
     } else {
-      console.log("  — No --hoodie-black path supplied; skipping mockup upload.");
+      console.log("  — No --hoodie-black supplied; skipping mockup upload.");
     }
 
     if (HOODIE_WHITE) {
       const asset = await uploadMockup(shop.id, HOODIE_WHITE, "hoodie-white");
-      await upsertMockup({ productConfigId: configId, colorName: "White", colorHex: "#FFFFFF", ...asset });
+      await upsertMockup({ productConfigId: configId, colorName: "White", colorHex: "#FFFFFF", shopifyVariantId: TEE_WHITE_VARIANT, ...asset });
     } else {
-      console.log("  — No --hoodie-white path supplied; skipping mockup upload.");
+      console.log("  — No --hoodie-white supplied; skipping mockup upload.");
     }
   }
 
-  console.log("\nDone. Next steps:");
-  console.log("  1. Set the icy.customizable metafield to true on each product in Shopify admin.");
-  console.log("  2. If you skipped mockup uploads, re-run with the --tee-black / --tee-white etc. flags.");
-  console.log("  3. Verify: open https://wearicy.com/apps/icy-customizer?product=<handle>&productId=<id>");
+  console.log("\nDone.");
+  console.log("Next: set icy.customizable = true on the product in Shopify admin metafields.");
 }
 
 main()
-  .then(() => process.exit(0))
-  .catch((err) => {
-    console.error(err.message ?? err);
-    process.exit(1);
-  });
+  .then(() => { sql.end(); process.exit(0); })
+  .catch((err) => { console.error(err.message ?? err); sql.end(); process.exit(1); });

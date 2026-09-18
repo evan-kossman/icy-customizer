@@ -66,7 +66,7 @@ export const productConfigs = pgTable(
     textEnabled: boolean("text_enabled").default(true).notNull(),
     stickersEnabled: boolean("stickers_enabled").default(true).notNull(),
 
-    maxUploads: integer("max_uploads").default(6).notNull(),
+    maxUploads: integer('max_uploads').default(2).notNull(),
     maxUploadBytes: integer("max_upload_bytes").default(10485760).notNull(),
 
     stickerCategories: text("sticker_categories").array().default([]).notNull(),

@@ -43,6 +43,11 @@ const config: NextConfig = {
         headers: [{ key: "Access-Control-Allow-Origin", value: "*" }],
       },
       {
+        // Allow cross-origin loads of custom font files served from public/fonts/.
+        source: "/fonts/:path*",
+        headers: [{ key: "Access-Control-Allow-Origin", value: "*" }],
+      },
+      {
         // The admin UI is embedded in the Shopify Admin iframe.
         source: "/admin/:path*",
         headers: [
