@@ -1,4 +1,5 @@
 "use client";
+import { proxyFetch } from "@/lib/client-token";
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -116,7 +117,7 @@ export default function Customizer({
   // Fetch the authoritative credit balance; the display never drives spending.
   useEffect(() => {
     if (!config.features.ai || !customer.loggedIn) return;
-    fetch(`${proxyBase}/api/ai-credits`)
+    proxyFetch(`${proxyBase}/api/ai-credits`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => d && setCredits(d.remaining))
       .catch(() => setCredits(null));

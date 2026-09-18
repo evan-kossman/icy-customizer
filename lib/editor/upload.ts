@@ -5,6 +5,7 @@
  * the server, which is where they actually matter.
  */
 import { put } from "@vercel/blob/client";
+import { proxyFetch } from "@/lib/client-token";
 
 export const ACCEPTED_TYPES = ["image/jpeg", "image/png"] as const;
 export const ACCEPTED_EXTENSIONS = [".jpg", ".jpeg", ".png"];
@@ -67,7 +68,7 @@ export async function uploadImage(opts: {
   const assetId = crypto.randomUUID();
 
   // Step 1 — obtain a client token
-  const tokenRes = await fetch(`${opts.proxyBase}/api/upload`, {
+  const tokenRes = await proxyFetch(`${opts.proxyBase}/api/upload`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -102,7 +103,7 @@ export async function uploadImage(opts: {
   });
 
   // Step 3 — confirm so the server can persist the final URL
-  await fetch(`${opts.proxyBase}/api/upload`, {
+  await proxyFetch(`${opts.proxyBase}/api/upload`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action: "complete", assetId, url: blob.url }),
@@ -118,7 +119,7 @@ export async function removeBackground(opts: {
   sessionId: string;
   assetId: string;
 }): Promise<UploadResult> {
-  const res = await fetch(`${opts.proxyBase}/api/background-removal`, {
+  const res = await proxyFetch(`${opts.proxyBase}/api/background-removal`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sessionId: opts.sessionId, assetId: opts.assetId }),
