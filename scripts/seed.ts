@@ -183,7 +183,20 @@ async function upsertMockup(opts: {
     .limit(1);
 
   if (existing[0]) {
-    console.log(`    ✓ Mockup ${opts.colorName} already exists`);
+    // Update the row so assetKey, dimensions and variantId stay current.
+    await db
+      .update(schema.mockups)
+      .set({
+        assetKey: opts.assetKey,
+        width: opts.width,
+        height: opts.height,
+        colorHex: opts.colorHex,
+        shopifyVariantId: opts.shopifyVariantId
+          ? `gid://shopify/ProductVariant/${opts.shopifyVariantId}`
+          : null,
+      })
+      .where(eq(schema.mockups.id, existing[0].id));
+    console.log("    ✓ Updated mockup: " + opts.colorName);
     return;
   }
 
