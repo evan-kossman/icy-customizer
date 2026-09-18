@@ -13,7 +13,7 @@ import type { NextConfig } from "next";
  * cross-origin via @font-face inside a CSS file.  Script and stylesheet tags
  * don't require CORS, but @font-face does.
  */
-const VERCEL_URL = "https://wearicy-customizer.vercel.app";
+const VERCEL_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://icy-customizer.vercel.app";
 
 const config: NextConfig = {
   reactStrictMode: true,
