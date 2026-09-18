@@ -16,6 +16,11 @@ import type { NextConfig } from "next";
 const VERCEL_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://icy-customizer.vercel.app";
 
 const config: NextConfig = {
+  // Shopify App Proxy does not follow redirects — it passes them straight to
+  // the browser, which then resolves the Location relative to the storefront
+  // domain and 404s. Disabling Next.js's built-in trailing-slash 308 redirect
+  // means both /proxy and /proxy/ are served without any redirect.
+  skipTrailingSlashRedirect: true,
   reactStrictMode: true,
   serverExternalPackages: ["sharp"],
 
