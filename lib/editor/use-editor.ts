@@ -1,5 +1,5 @@
-import { proxyFetch } from "@/lib/client-token";
 "use client";
+import { proxyFetch } from "@/lib/client-token";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { editorReducer } from "./reducer";
