@@ -24,7 +24,7 @@ import postgres from "postgres";
 import { eq, and } from "drizzle-orm";
 import * as schema from "../db/schema";
 import { createId } from "../lib/id";
-import { putObject, objectExists, StorageKeys } from "../lib/storage";
+import { putObject, StorageKeys } from "../lib/storage";
 import sharp from "sharp";
 
 // ---------------------------------------------------------------------------
@@ -102,17 +102,15 @@ async function uploadMockup(
   const key = StorageKeys.mockup(shopId, label);
   const contentType = `image/${ext === "jpg" ? "jpeg" : ext}`;
 
-  const exists = await objectExists(key);
-  if (exists) {
-    console.log(`  ✓ ${label}: already in Blob`);
-  } else {
-    const buf = readFileSync(abs);
-    await putObject(key, buf, contentType);
-    console.log(`  ↑ ${label}: uploaded to Vercel Blob`);
-  }
+  // putObject returns the full public Vercel Blob URL — that's what must be
+  // stored as assetKey so publicUrl() can pass it straight through to the browser.
+  // We always upload so we capture the URL; Vercel Blob's put() is idempotent.
+  const buf = readFileSync(abs);
+  const blobUrl = await putObject(key, buf, contentType);
+  console.log(`  ↑ ${label}: uploaded to Vercel Blob → ${blobUrl}`);
 
   const meta = await sharp(abs).metadata();
-  return { assetKey: key, width: meta.width ?? 0, height: meta.height ?? 0 };
+  return { assetKey: blobUrl, width: meta.width ?? 0, height: meta.height ?? 0 };
 }
 
 async function upsertProductConfig(
