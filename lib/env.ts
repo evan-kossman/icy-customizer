@@ -29,10 +29,16 @@ const schema = z.object({
 
   // Feature providers (optional — features report unavailable without them)
   BACKGROUND_REMOVAL_PROVIDER: z
-    .enum(["removebg", "replicate", "none"])
+    .string()
+    .transform((v) => (v === "" ? "none" : v))
+    .pipe(z.enum(["removebg", "replicate", "none"]))
     .default("none"),
   BACKGROUND_REMOVAL_API_KEY: z.string().optional(),
-  AI_PROVIDER: z.enum(["openai", "replicate", "none"]).default("none"),
+  AI_PROVIDER: z
+    .string()
+    .transform((v) => (v === "" ? "none" : v))
+    .pipe(z.enum(["openai", "replicate", "none"]))
+    .default("none"),
   AI_API_KEY: z.string().optional(),
   AI_CREDITS_PER_CUSTOMER: z.coerce.number().int().default(5),
 
