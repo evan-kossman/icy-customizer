@@ -401,11 +401,11 @@ export default function Customizer({
         </span>
       </header>
 
-      <div className="mx-auto grid max-w-7xl gap-4 p-4 lg:grid-cols-[1fr_380px]">
+      <div className="mx-auto grid max-w-7xl gap-4 p-4 lg:grid-cols-[1fr_380px] lg:h-[calc(100vh-53px)] lg:overflow-hidden">
         {/* Canvas */}
-        <div className="space-y-3">
+        <div className="space-y-3 lg:overflow-y-auto lg:pb-4">
           <div className="rounded-card border border-line bg-surface p-3">
-            <div ref={containerRef} className="mx-auto w-full max-w-[560px] overflow-hidden">
+            <div ref={containerRef} className="mx-auto w-full max-w-[560px] lg:max-w-[420px] xl:max-w-[480px] overflow-hidden">
               {containerWidth > 0 && (
                 <CanvasStage
                   objects={current.design.objects}
@@ -475,7 +475,7 @@ export default function Customizer({
         </div>
 
         {/* Controls */}
-        <div className="space-y-4">
+        <div className="space-y-4 lg:overflow-y-auto lg:pb-4">
           <ColorPanel
             mockups={mockups}
             selectedColor={current.design.color}
