@@ -11,7 +11,7 @@ import { newClientToken, newPublicId, sessionExpiry } from "@/lib/session";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const COOKIE = "icy_client_token";
+// Client token comes from X-Icy-Client-Token header (cookie not forwarded by Shopify App Proxy)
 
 /** Creates a design session for a customizable product. */
 export async function POST(req: NextRequest) {
@@ -28,8 +28,9 @@ export async function POST(req: NextRequest) {
     // a client cannot open a session against an arbitrary product.
     const config = await requireProductConfig(ctx.shop.id, productId);
 
-    const existingToken = req.cookies.get(COOKIE)?.value;
-    const clientToken = existingToken || newClientToken();
+    // Client sends its own token via header; fall back to generating one
+    // server-side so the flow still works if the header is absent.
+    const clientToken = req.headers.get("x-icy-client-token") || newClientToken();
 
     const inserted = await db
       .insert(schema.designSessions)
@@ -55,16 +56,6 @@ export async function POST(req: NextRequest) {
       designId: session.publicId,
       expiresAt: session.expiresAt,
     });
-
-    if (!existingToken) {
-      res.cookies.set(COOKIE, clientToken, {
-        httpOnly: true,
-        secure: true,
-        sameSite: "lax",
-        path: "/",
-        maxAge: 60 * 60 * 24 * 30,
-      });
-    }
 
     return res;
   } catch (err) {

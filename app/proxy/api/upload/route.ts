@@ -10,7 +10,7 @@ import { createId } from "@/lib/id";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const COOKIE = "icy_client_token";
+// Client token comes from X-Icy-Client-Token header (cookie not forwarded by Shopify App Proxy)
 
 /**
  * Two sub-actions in one route:
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
     const session = await requireOwnedSession({
       sessionId,
       shopId: ctx.shop.id,
-      clientToken: req.cookies.get(COOKIE)?.value ?? null,
+      clientToken: req.headers.get("x-icy-client-token"),
       customerId: ctx.customerId,
     });
 

@@ -1,4 +1,5 @@
 "use client";
+import { proxyFetch } from "@/lib/client-token";
 
 import { useEffect, useState } from "react";
 import Customizer from "@/components/editor/Customizer";
@@ -34,14 +35,14 @@ export default function CustomizerClient({
         if (productId) params.set("productId", productId);
         if (productHandle) params.set("handle", productHandle);
 
-        const configRes = await fetch(`${proxyBase}/api/config?${params}`);
+        const configRes = await proxyFetch(`${proxyBase}/api/config?${params}`);
         if (!configRes.ok) {
           const body = await configRes.json().catch(() => ({}));
           throw new Error(body.error ?? "This product can't be customized right now.");
         }
         const config = (await configRes.json()) as EditorBootstrap;
 
-        const sessionRes = await fetch(`${proxyBase}/api/session`, {
+        const sessionRes = await proxyFetch(`${proxyBase}/api/session`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ productId: config.product.id }),

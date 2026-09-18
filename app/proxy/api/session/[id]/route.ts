@@ -8,14 +8,14 @@ import { designFingerprint, validateDesign, type DesignDocument } from "@/lib/de
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const COOKIE = "icy_client_token";
+// Client token comes from X-Icy-Client-Token header (cookie not forwarded by Shopify App Proxy)
 
 async function context(req: NextRequest, sessionId: string) {
   const ctx = await requireProxyContext(req);
   const session = await requireOwnedSession({
     sessionId,
     shopId: ctx.shop.id,
-    clientToken: req.cookies.get(COOKIE)?.value ?? null,
+    clientToken: req.headers.get("x-icy-client-token"),
     customerId: ctx.customerId,
   });
   return { ctx, session };

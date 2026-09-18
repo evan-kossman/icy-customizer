@@ -1,3 +1,4 @@
+import { proxyFetch } from "@/lib/client-token";
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -201,7 +202,7 @@ export function useAutosave(opts: {
     timer.current = setTimeout(async () => {
       setStatus("saving");
       try {
-        const res = await fetch(`${opts.proxyBase}/api/session/${opts.sessionId}`, {
+        const res = await proxyFetch(`${opts.proxyBase}/api/session/${opts.sessionId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ design: opts.design }),
