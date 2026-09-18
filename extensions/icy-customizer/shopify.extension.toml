@@ -1,5 +1,6 @@
 name = "Icy Customizer"
 type = "theme"
+uid = "29a81a28-b097-74af-cd21-08fbd29763e31741ace3"
 
 # Theme app extension. The merchant enables this from the theme editor
 # (Online Store > Customize > App embeds), so no Liquid file is ever edited by
