@@ -1,12 +1,12 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "7e6f543e2eecbbe30c2a3e3bcc47a40b"
-application_url = "https://wearicy-customizer.vercel.app/admin"
+application_url = "https://icy-customizer.vercel.app/admin"
 embedded = true
 name = "Icy Customizer"
 
 [app_proxy]
-url = "https://wearicy-customizer.vercel.app/proxy"
+url = "https://icy-customizer.vercel.app/proxy"
 subpath = "icy-customizer"
 prefix = "apps"
 
@@ -17,7 +17,7 @@ optional_scopes = [ ]
 use_legacy_install_flow = false
 
 [auth]
-redirect_urls = [ "https://wearicy-customizer.vercel.app/api/auth/callback" ]
+redirect_urls = [ "https://icy-customizer.vercel.app/api/auth/callback" ]
 
 [webhooks]
 api_version = "2026-07"
