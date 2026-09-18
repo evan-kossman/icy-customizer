@@ -1,9 +1,10 @@
 /**
- * Client-side upload validation and the direct-to-storage upload flow.
+ * Client-side upload validation and the direct-to-Vercel-Blob upload flow.
  *
  * Validation here is a courtesy to the customer — the same checks run again on
  * the server, which is where they actually matter.
  */
+import { put } from "@vercel/blob/client";
 
 export const ACCEPTED_TYPES = ["image/jpeg", "image/png"] as const;
 export const ACCEPTED_EXTENSIONS = [".jpg", ".jpeg", ".png"];
@@ -29,8 +30,6 @@ export function validateFile(
   );
   const typeOk = (ACCEPTED_TYPES as readonly string[]).includes(file.type);
 
-  // Require both: a spoofed MIME type with a valid extension still gets
-  // re-checked server-side by inspecting the actual file header.
   if (!typeOk || !extensionOk) {
     return { code: "type", message: "Please upload a JPG or PNG image." };
   }
@@ -51,8 +50,11 @@ export interface UploadResult {
 }
 
 /**
- * Two-step upload: ask the server to authorise, then PUT the bytes straight to
- * object storage. The image never passes through the application server.
+ * Three-step upload:
+ *  1. Ask the server to validate the request and return a short-lived
+ *     Vercel Blob client token.  Bytes never hit our function.
+ *  2. PUT the file directly to Vercel Blob using that token.
+ *  3. Tell the server the final URL so it can persist it on the DB row.
  */
 export async function uploadImage(opts: {
   proxyBase: string;
@@ -62,12 +64,16 @@ export async function uploadImage(opts: {
   height: number;
   signal?: AbortSignal;
 }): Promise<UploadResult> {
-  const authorise = await fetch(`${opts.proxyBase}/api/upload`, {
+  const assetId = crypto.randomUUID();
+
+  // Step 1 — obtain a client token
+  const tokenRes = await fetch(`${opts.proxyBase}/api/upload`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      action: "token",
       sessionId: opts.sessionId,
-      fileName: opts.file.name,
+      assetId,
       contentType: opts.file.type,
       contentLength: opts.file.size,
       width: opts.width,
@@ -76,29 +82,34 @@ export async function uploadImage(opts: {
     signal: opts.signal,
   });
 
-  if (!authorise.ok) {
-    const body = await authorise.json().catch(() => ({}));
-    throw new Error(body.error ?? "Unable to upload this image. Please try again.");
+  if (!tokenRes.ok) {
+    const body = await tokenRes.json().catch(() => ({}));
+    throw new Error(
+      (body as { error?: string }).error ??
+        "Unable to upload this image. Please try again."
+    );
   }
 
-  const { uploadUrl, assetId, url } = (await authorise.json()) as {
-    uploadUrl: string;
-    assetId: string;
-    url: string;
+  const { clientToken, key } = (await tokenRes.json()) as {
+    clientToken: string;
+    key: string;
   };
 
-  const put = await fetch(uploadUrl, {
-    method: "PUT",
-    headers: { "Content-Type": opts.file.type },
-    body: opts.file,
+  // Step 2 — upload directly to Vercel Blob (bytes never touch our function)
+  const blob = await put(key, opts.file, {
+    access: "public",
+    token: clientToken,
+  });
+
+  // Step 3 — confirm so the server can persist the final URL
+  await fetch(`${opts.proxyBase}/api/upload`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "complete", assetId, url: blob.url }),
     signal: opts.signal,
   });
 
-  if (!put.ok) {
-    throw new Error("Unable to upload this image. Please try again.");
-  }
-
-  return { assetId, url, width: opts.width, height: opts.height };
+  return { assetId, url: blob.url, width: opts.width, height: opts.height };
 }
 
 /** Requests background removal for an already-uploaded asset. */
@@ -116,7 +127,7 @@ export async function removeBackground(opts: {
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(
-      body.error ??
+      (body as { error?: string }).error ??
         "Background removal couldn't be completed. Your original image is still available."
     );
   }

@@ -22,15 +22,12 @@ const schema = z.object({
   DATABASE_URL: z.string().min(1),
   ENCRYPTION_KEY: z.string().min(32),
 
-  // Object storage (S3-compatible: Cloudflare R2 by default)
-  STORAGE_ENDPOINT: z.string().url(),
-  STORAGE_REGION: z.string().default("auto"),
-  STORAGE_ACCESS_KEY: z.string().min(1),
-  STORAGE_SECRET_KEY: z.string().min(1),
-  STORAGE_BUCKET: z.string().min(1),
-  STORAGE_PUBLIC_BASE_URL: z.string().url().optional(),
+  // Vercel Blob (storage) — BLOB_READ_WRITE_TOKEN is read directly by the
+  // @vercel/blob SDK from process.env; we validate it exists here so startup
+  // fails fast rather than at the first upload.
+  BLOB_READ_WRITE_TOKEN: z.string().min(1),
 
-  // Feature providers
+  // Feature providers (optional — features report unavailable without them)
   BACKGROUND_REMOVAL_PROVIDER: z
     .enum(["removebg", "replicate", "none"])
     .default("none"),
