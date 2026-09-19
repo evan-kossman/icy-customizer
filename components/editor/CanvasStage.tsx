@@ -91,8 +91,8 @@ export default function CanvasStage({
     onChange(
       object.id,
       {
-        x: geometry.toPrint(node.x()),
-        y: geometry.toPrint(node.y()),
+        x: geometry.toPrint(node.x() / zoom),
+        y: geometry.toPrint(node.y() / zoom),
         rotation: node.rotation(),
         scaleX: object.scaleX * nodeScaleX,
         scaleY: object.scaleY * nodeScaleY,
@@ -109,8 +109,8 @@ export default function CanvasStage({
 
     const common = {
       id: object.id,
-      x: geometry.toScreen(object.x),
-      y: geometry.toScreen(object.y),
+      x: geometry.toScreen(object.x) * zoom,
+      y: geometry.toScreen(object.y) * zoom,
       rotation: object.rotation,
       opacity: object.opacity,
       draggable: !object.locked,
@@ -124,8 +124,8 @@ export default function CanvasStage({
         onChange(
           object.id,
           {
-            x: geometry.toPrint(e.target.x()),
-            y: geometry.toPrint(e.target.y()),
+            x: geometry.toPrint(e.target.x() / zoom),
+            y: geometry.toPrint(e.target.y() / zoom),
           },
           true
         );
@@ -134,8 +134,8 @@ export default function CanvasStage({
         onChange(
           object.id,
           {
-            x: geometry.toPrint(e.target.x()),
-            y: geometry.toPrint(e.target.y()),
+            x: geometry.toPrint(e.target.x() / zoom),
+            y: geometry.toPrint(e.target.y() / zoom),
           },
           true
         );
@@ -149,8 +149,8 @@ export default function CanvasStage({
 
     if (object.type === "text") {
       const text = object as TextObject;
-      const fontSize = geometry.toScreen(text.fontSize);
-      const width = geometry.toScreen(text.width) * text.scaleX;
+      const fontSize = geometry.toScreen(text.fontSize) * zoom;
+      const width = geometry.toScreen(text.width) * zoom * text.scaleX;
 
       return (
         <Text
@@ -164,14 +164,14 @@ export default function CanvasStage({
           fill={text.fill}
           align={text.align}
           width={width}
-          letterSpacing={geometry.toScreen(text.letterSpacing)}
+          letterSpacing={geometry.toScreen(text.letterSpacing) * zoom}
           lineHeight={text.lineHeight}
           stroke={text.strokeColor}
-          strokeWidth={text.strokeWidth ? geometry.toScreen(text.strokeWidth) : 0}
+          strokeWidth={text.strokeWidth ? geometry.toScreen(text.strokeWidth) * zoom : 0}
           shadowColor={text.shadowColor}
-          shadowBlur={text.shadowBlur ? geometry.toScreen(text.shadowBlur) : 0}
-          shadowOffsetX={text.shadowOffsetX ? geometry.toScreen(text.shadowOffsetX) : 0}
-          shadowOffsetY={text.shadowOffsetY ? geometry.toScreen(text.shadowOffsetY) : 0}
+          shadowBlur={text.shadowBlur ? geometry.toScreen(text.shadowBlur) * zoom : 0}
+          shadowOffsetX={text.shadowOffsetX ? geometry.toScreen(text.shadowOffsetX) * zoom : 0}
+          shadowOffsetY={text.shadowOffsetY ? geometry.toScreen(text.shadowOffsetY) * zoom : 0}
           offsetX={width / 2}
           offsetY={fontSize / 2}
           scaleY={text.scaleY / text.scaleX || 1}
@@ -184,8 +184,8 @@ export default function CanvasStage({
     const bitmap = images[image.assetId];
     if (!bitmap) return null;
 
-    const width = geometry.toScreen(image.width) * image.scaleX;
-    const height = geometry.toScreen(image.height) * image.scaleY;
+    const width = geometry.toScreen(image.width) * zoom * image.scaleX;
+    const height = geometry.toScreen(image.height) * zoom * image.scaleY;
 
     return (
       <KonvaImage
@@ -238,12 +238,8 @@ export default function CanvasStage({
           clipHeight={clipH}
         >
           <Group
-            x={printCx}
-            y={printCy}
-            scaleX={zoom}
-            scaleY={zoom}
-            offsetX={clipW / 2}
-            offsetY={clipH / 2}
+            x={printCx - (clipW / 2) * zoom}
+            y={printCy - (clipH / 2) * zoom}
           >
             {ordered.map(renderObject)}
           </Group>
