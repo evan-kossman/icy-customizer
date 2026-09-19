@@ -80,7 +80,8 @@ export default function Customizer({
   const [zoom, setZoom] = useState(1);
   const [uploadBusy, setUploadBusy] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [bgRemovalOn, setBgRemovalOn] = useState(config.features.backgroundRemoval);
+  // BG removal defaults OFF — user must opt in (#10)
+  const [bgRemovalOn, setBgRemovalOn] = useState(false);
   const [credits, setCredits] = useState<number | null>(null);
 
   const activeMockup = useMemo(
@@ -424,33 +425,36 @@ export default function Customizer({
               )}
             </div>
 
-            {/* Toolbar */}
+            {/* Toolbar — Font Awesome icons via CDN */}
             <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-              <IconButton label="Undo" onClick={undo} disabled={!canUndo}>↶</IconButton>
-              <IconButton label="Redo" onClick={redo} disabled={!canRedo}>↷</IconButton>
-              <IconButton label="Zoom out" onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))}>−</IconButton>
-              <span className="min-w-[3rem] text-center text-xs text-muted">{Math.round(zoom * 100)}%</span>
-              <IconButton label="Zoom in" onClick={() => setZoom((z) => Math.min(3, z + 0.25))}>+</IconButton>
-              <IconButton label="Reset zoom" onClick={() => setZoom(1)}>⤢</IconButton>
-              <IconButton
-                label="Centre horizontally"
-                disabled={!current.selectedId}
-                onClick={() =>
-                  current.selectedId &&
-                  dispatch({ type: "center", id: current.selectedId, axis: "horizontal" })
-                }
-              >
-                ⇔
+              {/* Undo / Redo — standard FA icons (#1) */}
+              <IconButton label="Undo" onClick={undo} disabled={!canUndo}>
+                <i className="fa-solid fa-rotate-left" />
               </IconButton>
+              <IconButton label="Redo" onClick={redo} disabled={!canRedo}>
+                <i className="fa-solid fa-rotate-right" />
+              </IconButton>
+
+              <span className="h-5 w-px bg-line" aria-hidden />
+
+              {/* Zoom — only scales the design layer, canvas stays fixed (#2) */}
+              <IconButton label="Zoom out" onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))}>
+                <i className="fa-solid fa-magnifying-glass-minus" />
+              </IconButton>
+              <span className="min-w-[3rem] text-center text-xs text-muted">{Math.round(zoom * 100)}%</span>
+              <IconButton label="Zoom in" onClick={() => setZoom((z) => Math.min(3, z + 0.25))}>
+                <i className="fa-solid fa-magnifying-glass-plus" />
+              </IconButton>
+
+              {/* Fit to design: zoom so the print area fills the view (#3) */}
               <IconButton
-                label="Centre vertically"
-                disabled={!current.selectedId}
-                onClick={() =>
-                  current.selectedId &&
-                  dispatch({ type: "center", id: current.selectedId, axis: "vertical" })
-                }
+                label="Fit to design"
+                onClick={() => {
+                  const frac = activeMockup?.printArea?.width ?? 0.5;
+                  setZoom(Math.round((1 / frac) * 100) / 100);
+                }}
               >
-                ⇕
+                <i className="fa-solid fa-expand" />
               </IconButton>
             </div>
 
@@ -560,6 +564,7 @@ export default function Customizer({
           <LayersPanel
             objects={current.design.objects}
             selectedId={current.selectedId}
+            maxUploads={config.maxUploads}
             onSelect={(id) => dispatch({ type: "select", id })}
             onReorder={(id, direction) => dispatch({ type: "reorder", id, direction })}
             onUpdate={(id, patch) => dispatch({ type: "update-object", id, patch })}
