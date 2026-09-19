@@ -22,6 +22,35 @@ function optionFor(index: number) {
   return index === 0 ? TEXT_OPTION_1 : TEXT_OPTION_2;
 }
 
+/** Deduplicate fonts by base family name (#5).
+ *  Fonts that differ only in weight/style (Bold, Italic, etc.) are collapsed
+ *  into a single entry — bold/italic are driven by the style toggles below. */
+function dedupFonts(fonts: EditorFont[]): EditorFont[] {
+  const seen = new Set<string>();
+  const result: EditorFont[] = [];
+  for (const f of fonts) {
+    // Strip common weight/style suffixes to get the base family name.
+    const base = f.displayName
+      .replace(/[\s-]*(bold|italic|oblique|light|thin|medium|semibold|black|heavy|regular|roman|demi|condensed|extended|narrow|wide|book)[\s-]*/gi, " ")
+      .trim()
+      .toLowerCase();
+    if (!seen.has(base)) {
+      seen.add(base);
+      result.push(f);
+    }
+  }
+  return result;
+}
+
+const ALIGN_ORDER = ["left", "center", "right"] as const;
+type Align = (typeof ALIGN_ORDER)[number];
+
+const ALIGN_ICONS: Record<Align, string> = {
+  left: "fa-align-left",
+  center: "fa-align-center",
+  right: "fa-align-right",
+};
+
 export default function TextPanel({
   fonts,
   selected,
@@ -35,7 +64,14 @@ export default function TextPanel({
     ? textObjects.findIndex((t) => t.id === selected.id)
     : -1;
   const option = selectedIndex >= 0 ? optionFor(selectedIndex) : null;
-  const canAdd = textObjects.length < 2;
+  const uniqueFonts = dedupFonts(fonts);
+
+  function cycleAlign() {
+    if (!selected) return;
+    const cur = (selected.align ?? "left") as Align;
+    const next = ALIGN_ORDER[(ALIGN_ORDER.indexOf(cur) + 1) % ALIGN_ORDER.length];
+    onChange({ align: next });
+  }
 
   return (
     <Card title="Add Your Text">
@@ -45,7 +81,6 @@ export default function TextPanel({
           label={TEXT_OPTION_1.label}
           maxChars={TEXT_OPTION_1.maxChars}
           object={textObjects[0] ?? null}
-          fonts={fonts}
           isSelected={selectedIndex === 0}
           onChange={onChange}
           onDelete={onDelete}
@@ -58,7 +93,6 @@ export default function TextPanel({
             label={TEXT_OPTION_2.label}
             maxChars={TEXT_OPTION_2.maxChars}
             object={textObjects[1] ?? null}
-            fonts={fonts}
             isSelected={selectedIndex === 1}
             onChange={onChange}
             onDelete={onDelete}
@@ -67,83 +101,75 @@ export default function TextPanel({
         )}
 
         {selected && option && (
-          <div className="rounded-xl border border-line bg-canvas p-3 space-y-3">
+          <div className="rounded-xl border border-line bg-canvas p-3 space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted">{option.label} — Style</p>
 
-            {/* Font family */}
-            {fonts.length > 0 && (
-              <div>
-                <label className="mb-1 block text-xs font-medium text-ink">Font</label>
-                <select
-                  value={selected.fontFamily}
-                  onChange={(e) => onChange({ fontFamily: e.target.value })}
-                  className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm focus:border-accent focus:outline-none"
-                  style={{ fontFamily: selected.fontFamily }}
-                >
-                  {fonts.map((font) => (
-                    <option key={font.id} value={font.family} style={{ fontFamily: font.family }}>
-                      {font.displayName}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            {/* Row 1: Font (#7) */}
+            {uniqueFonts.length > 0 && (
+              <select
+                value={selected.fontFamily}
+                onChange={(e) => onChange({ fontFamily: e.target.value })}
+                className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm focus:border-accent focus:outline-none"
+                style={{ fontFamily: selected.fontFamily }}
+                aria-label="Font"
+              >
+                {uniqueFonts.map((font) => (
+                  <option key={font.id} value={font.family} style={{ fontFamily: font.family }}>
+                    {font.displayName}
+                  </option>
+                ))}
+              </select>
             )}
 
-            {/* Colour + alignment */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-ink">Colour</label>
-                <input
-                  type="color"
-                  value={selected.fill}
-                  onChange={(e) => onChange({ fill: e.target.value })}
-                  className="h-10 w-full cursor-pointer rounded-lg border border-line"
-                  aria-label="Text colour"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-ink">Align</label>
-                <div className="flex gap-1">
-                  {(["left", "center", "right"] as const).map((a) => (
-                    <button
-                      key={a}
-                      onClick={() => onChange({ align: a })}
-                      className={`flex-1 rounded-lg border py-2 text-xs transition-colors ${
-                        selected.align === a
-                          ? "border-ink bg-ink text-white"
-                          : "border-line bg-white text-ink hover:bg-canvas"
-                      }`}
-                      aria-pressed={selected.align === a}
-                    >
-                      {a === "left" ? "≡" : a === "center" ? "≡" : "≡"}
-                      {a === "left" ? "L" : a === "center" ? "C" : "R"}
-                    </button>
-                  ))}
-                </div>
-              </div>
+            {/* Row 2: Colour · Align (single cycle) · Bold · Italic · All Caps (#7) */}
+            <div className="flex items-center gap-1.5">
+              {/* Colour swatch */}
+              <input
+                type="color"
+                value={selected.fill}
+                onChange={(e) => onChange({ fill: e.target.value })}
+                className="h-9 w-10 cursor-pointer rounded-lg border border-line p-0.5 shrink-0"
+                aria-label="Text colour"
+                title="Text colour"
+              />
+
+              {/* Alignment — single toggle button (#7) */}
+              <button
+                onClick={cycleAlign}
+                title={`Align ${selected.align ?? "left"} (click to cycle)`}
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-white text-ink transition-colors hover:bg-canvas shrink-0"
+                aria-label="Cycle text alignment"
+              >
+                <i className={`fa-solid ${ALIGN_ICONS[(selected.align as Align) ?? "left"]} text-sm`} />
+              </button>
+
+              {/* Bold */}
+              <StyleToggle
+                active={selected.fontWeight >= 600}
+                onToggle={() => onChange({ fontWeight: selected.fontWeight >= 600 ? 400 : 700 })}
+                label="Bold"
+                icon="fa-bold"
+              />
+              {/* Italic */}
+              <StyleToggle
+                active={!!selected.italic}
+                onToggle={() => onChange({ italic: !selected.italic })}
+                label="Italic"
+                icon="fa-italic"
+              />
+              {/* All caps */}
+              <StyleToggle
+                active={!!selected.uppercase}
+                onToggle={() => onChange({ uppercase: !selected.uppercase })}
+                label="All caps"
+                icon="fa-font"
+                extra="text-[10px] tracking-widest uppercase"
+              >
+                AA
+              </StyleToggle>
             </div>
 
-            {/* Style toggles */}
-            <div className="flex gap-2">
-              {[
-                { label: <strong>B</strong>, key: "bold" as const, active: selected.fontWeight >= 600, action: () => onChange({ fontWeight: selected.fontWeight >= 600 ? 400 : 700 }) },
-                { label: <em>I</em>, key: "italic" as const, active: selected.italic, action: () => onChange({ italic: !selected.italic }) },
-                { label: <span className="uppercase tracking-widest text-[10px]">AA</span>, key: "upper" as const, active: selected.uppercase, action: () => onChange({ uppercase: !selected.uppercase }) },
-              ].map(({ label, key, active, action }) => (
-                <button
-                  key={key}
-                  onClick={action}
-                  className={`h-9 w-9 rounded-lg border text-sm transition-colors ${
-                    active ? "border-ink bg-ink text-white" : "border-line bg-white text-ink hover:bg-canvas"
-                  }`}
-                  aria-pressed={active}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            <Button variant="danger" onClick={onDelete} className="w-full">
+            <Button variant="danger" onClick={onDelete} className="w-full mt-1">
               Remove
             </Button>
           </div>
@@ -153,18 +179,47 @@ export default function TextPanel({
   );
 }
 
+function StyleToggle({
+  active,
+  onToggle,
+  label,
+  icon,
+  extra = "",
+  children,
+}: {
+  active: boolean;
+  onToggle: () => void;
+  label: string;
+  icon: string;
+  extra?: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      title={label}
+      aria-label={label}
+      aria-pressed={active}
+      className={`flex h-9 w-9 items-center justify-center rounded-lg border text-sm transition-colors shrink-0 ${
+        active ? "border-ink bg-ink text-white" : "border-line bg-white text-ink hover:bg-canvas"
+      }`}
+    >
+      {children ?? <i className={`fa-solid ${icon} ${extra}`} />}
+    </button>
+  );
+}
+
 interface SlotProps {
   label: string;
   maxChars: number;
   object: TextObject | null;
-  fonts: EditorFont[];
   isSelected: boolean;
   onChange: (patch: Partial<TextObject>) => void;
   onDelete: () => void;
   onAdd?: () => void;
 }
 
-function TextSlot({ label, maxChars, object, isSelected, onChange, onDelete, onAdd }: SlotProps) {
+function TextSlot({ label, maxChars, object, isSelected, onChange, onAdd }: SlotProps) {
   const charCount = object?.text?.length ?? 0;
 
   if (!object) {
