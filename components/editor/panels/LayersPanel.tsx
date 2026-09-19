@@ -47,7 +47,7 @@ export default function LayersPanel({
   const ordered = [...objects].sort((a, b) => b.zIndex - a.zIndex);
 
   const imageCount = objects.filter(
-    (o) => o.type === "upload" || o.type === "ai-image" || o.type === "sticker"
+    (o) => o.type === "image" || o.type === "ai-image" || o.type === "sticker"
   ).length;
   const textCount = objects.filter((o) => o.type === "text").length;
 
