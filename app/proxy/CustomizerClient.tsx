@@ -4,6 +4,8 @@ import { proxyFetch } from "@/lib/client-token";
 import { useEffect, useState } from "react";
 import Customizer from "@/components/editor/Customizer";
 import type { EditorBootstrap, EditorMockup, EditorState, EditorVariant } from "@/lib/editor/types";
+import type { ImageObject } from "@/lib/design";
+import { imageQuality } from "@/lib/design";
 import { Alert, Button } from "@/components/editor/ui";
 
 // ---------------------------------------------------------------------------
@@ -14,11 +16,15 @@ function ReviewStep({
   bootstrap,
   sessionId,
   design,
+  assets,
+  previewUrl,
   onBack,
 }: {
   bootstrap: EditorBootstrap;
   sessionId: string;
   design: EditorState["design"];
+  assets: EditorState["assets"];
+  previewUrl: string | null;
   onBack: () => void;
 }) {
   const { product, mockups } = bootstrap;
@@ -45,11 +51,30 @@ function ReviewStep({
     v.selectedOptions.every((o) => selectedOptions[o.name] === o.value)
   );
 
+  // Quality check — flag any uploaded image that's below 150 dpi at its
+  // rendered size so we can warn the customer before they commit.
+  const printArea = bootstrap.config.printArea;
+  const lowQualityImages = design.objects.filter((obj) => {
+    if (obj.type !== "image" && obj.type !== "ai-image") return false;
+    const img = obj as ImageObject;
+    const asset = assets[img.assetId];
+    if (!asset) return false;
+    // Temporarily merge the asset's source dimensions into the object so we
+    // can reuse the shared imageQuality helper.
+    const augmented: ImageObject = {
+      ...img,
+      sourceWidth: asset.width,
+      sourceHeight: asset.height,
+    };
+    return imageQuality(augmented, printArea).level !== "good";
+  });
+
+  const [confirmed, setConfirmed] = useState(false);
   const [addState, setAddState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [addError, setAddError] = useState<string | null>(null);
 
   async function addToCart() {
-    if (!selectedVariant) return;
+    if (!selectedVariant || !confirmed) return;
     setAddState("loading");
     setAddError(null);
     try {
@@ -99,13 +124,16 @@ function ReviewStep({
 
       <h1 className="text-xl font-semibold">Review your design</h1>
 
-      {/* Mockup */}
-      {mockup && (
-        <div className="rounded-xl overflow-hidden border border-border bg-muted/20">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={mockup.url} alt="Your custom design" className="w-full object-contain" />
-        </div>
-      )}
+      {/* Design preview — canvas snapshot if available, otherwise plain mockup */}
+      <div className="rounded-xl overflow-hidden border border-border bg-muted/20">
+        {previewUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={previewUrl} alt="Your custom design" className="w-full object-contain" />
+        ) : mockup ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={mockup.url} alt="Product mockup" className="w-full object-contain" />
+        ) : null}
+      </div>
 
       {/* Option selectors */}
       {product.options.map((opt) => (
@@ -134,12 +162,44 @@ function ReviewStep({
 
       {/* Price */}
       {price && (
-        <p className="text-2xl font-bold">{price} <span className="text-sm font-normal text-muted">CAD</span></p>
+        <p className="text-2xl font-bold">
+          {price}{" "}
+          <span className="text-sm font-normal text-muted">CAD</span>
+        </p>
+      )}
+
+      {/* Low-quality image warning */}
+      {lowQualityImages.length > 0 && (
+        <Alert tone="warning">
+          One or more of your images may print at lower quality. For best results, upload images
+          at least 300 DPI at their printed size.
+        </Alert>
       )}
 
       {/* Availability warning */}
       {selectedVariant && !selectedVariant.availableForSale && (
         <Alert tone="error">This option is currently out of stock.</Alert>
+      )}
+
+      {/* Confirmation checkbox */}
+      {addState !== "success" && (
+        <label
+          className={`flex items-start gap-3 rounded-xl border-2 p-4 cursor-pointer transition-colors ${
+            confirmed ? "border-primary bg-primary/5" : "border-border"
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={confirmed}
+            onChange={(e) => setConfirmed(e.target.checked)}
+            className="mt-0.5 h-5 w-5 rounded accent-primary"
+          />
+          <span className="text-sm leading-snug">
+            I own or have permission to use this artwork, and I authorize ICY to print it.
+            I&apos;m happy with how it looks.{" "}
+            <span className="font-medium">Good to go.</span>
+          </span>
+        </label>
       )}
 
       {/* Add to cart / success */}
@@ -163,7 +223,12 @@ function ReviewStep({
           {addError && <Alert tone="error">{addError}</Alert>}
           <Button
             onClick={addToCart}
-            disabled={!selectedVariant || !selectedVariant.availableForSale || addState === "loading"}
+            disabled={
+              !selectedVariant ||
+              !selectedVariant.availableForSale ||
+              !confirmed ||
+              addState === "loading"
+            }
             className="w-full"
           >
             {addState === "loading" ? "Adding…" : "Add to Cart"}
@@ -172,6 +237,16 @@ function ReviewStep({
       )}
     </main>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Session storage helpers
+// ---------------------------------------------------------------------------
+
+interface ReviewPayload {
+  design: EditorState["design"];
+  assets: EditorState["assets"];
+  previewUrl: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -193,7 +268,7 @@ export default function CustomizerClient({
 
   // Step state
   const [step, setStep] = useState<"editor" | "review">("editor");
-  const [reviewDesign, setReviewDesign] = useState<EditorState["design"] | null>(null);
+  const [reviewPayload, setReviewPayload] = useState<ReviewPayload | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -258,8 +333,8 @@ export default function CustomizerClient({
       try {
         const raw = window.sessionStorage.getItem(`icy:review:${sessionId}`);
         if (!raw) return;
-        const { design } = JSON.parse(raw) as { design: EditorState["design"] };
-        setReviewDesign(design);
+        const payload = JSON.parse(raw) as ReviewPayload;
+        setReviewPayload(payload);
         setStep("review");
       } catch {
         // ignore malformed data
@@ -275,7 +350,7 @@ export default function CustomizerClient({
         enterReview();
       } else {
         setStep("editor");
-        setReviewDesign(null);
+        setReviewPayload(null);
       }
     }
 
@@ -306,16 +381,18 @@ export default function CustomizerClient({
     );
   }
 
-  if (step === "review" && reviewDesign) {
+  if (step === "review" && reviewPayload) {
     return (
       <ReviewStep
         bootstrap={bootstrap}
         sessionId={sessionId}
-        design={reviewDesign}
+        design={reviewPayload.design}
+        assets={reviewPayload.assets}
+        previewUrl={reviewPayload.previewUrl}
         onBack={() => {
           window.history.back();
           setStep("editor");
-          setReviewDesign(null);
+          setReviewPayload(null);
         }}
       />
     );
@@ -329,10 +406,15 @@ export default function CustomizerClient({
       onClose={() => {
         window.location.href = `/products/${bootstrap.product.handle}`;
       }}
-      onContinue={(state: EditorState) => {
+      onContinue={(state: EditorState & { previewUrl?: string | null }) => {
+        const payload: ReviewPayload = {
+          design: state.design,
+          assets: state.assets,
+          previewUrl: state.previewUrl ?? null,
+        };
         window.sessionStorage.setItem(
           `icy:review:${sessionId}`,
-          JSON.stringify({ design: state.design })
+          JSON.stringify(payload)
         );
         window.history.pushState({ step: "review" }, "", `?step=review`);
         window.dispatchEvent(new CustomEvent("icy:continue"));

@@ -71,8 +71,30 @@
     var forms = document.querySelectorAll('form[action*="/cart/add"]');
     if (!forms.length) return;
 
+    // Only inject one Customize button per page — themes like Dawn render
+    // a second (sticky) product form that would otherwise get its own button.
+    var pageButtonAdded = false;
+
     Array.prototype.forEach.call(forms, function (form) {
       if (form.hasAttribute("data-icy-handled")) return;
+      if (pageButtonAdded) {
+        // Still mark the form as handled so we hide its submit + dynamic checkout.
+        form.setAttribute("data-icy-handled", "true");
+        form.setAttribute("data-icy-product-handle", current.handle);
+        var extraSubmits = form.querySelectorAll('button[type="submit"], input[type="submit"], [name="add"]');
+        Array.prototype.forEach.call(extraSubmits, function (btn) {
+          btn.disabled = true;
+          btn.setAttribute("aria-hidden", "true");
+          btn.setAttribute("data-icy-disabled", "true");
+          btn.style.display = "none";
+        });
+        var extraDynamic = form.querySelectorAll(".shopify-payment-button, [data-shopify='payment-button']");
+        Array.prototype.forEach.call(extraDynamic, function (el) {
+          el.style.display = "none";
+          el.setAttribute("data-icy-disabled", "true");
+        });
+        return;
+      }
       form.setAttribute("data-icy-handled", "true");
 
       // Mark the form so the fetch interceptor can identify it later.
@@ -100,6 +122,8 @@
       } else {
         form.appendChild(button);
       }
+
+      pageButtonAdded = true;
 
       // Dynamic checkout buttons bypass the cart entirely, so they must go too.
       var dynamic = form.querySelectorAll(

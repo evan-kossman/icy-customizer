@@ -2,7 +2,7 @@
 import { proxyFetch } from "@/lib/client-token";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   emptyDesign,
   hasOverflow,
@@ -78,6 +78,27 @@ export default function Customizer({
   useEffect(() => setState(current), [current]);
 
   const [zoom, setZoom] = useState(1);
+  const stageRef = useRef<import("konva/lib/Stage").Stage | null>(null);
+
+  /**
+   * Capture a JPEG preview of the current canvas and pass it to the caller
+   * alongside the design state so the review step can display the design.
+   */
+  function continueWithPreview(editorState: EditorState) {
+    let previewUrl: string | null = null;
+    try {
+      const dataUrl = stageRef.current?.toDataURL({
+        mimeType: "image/jpeg",
+        quality: 0.8,
+        pixelRatio: 1.5,
+      });
+      previewUrl = dataUrl ?? null;
+    } catch {
+      /* canvas might be tainted by cross-origin assets — skip preview */
+    }
+    onContinue({ ...editorState, previewUrl } as EditorState & { previewUrl: string | null });
+  }
+
   const [uploadBusy, setUploadBusy] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   // BG removal defaults OFF — user must opt in (#10)
@@ -416,6 +437,7 @@ export default function Customizer({
                   geometry={geometry}
                   selectedId={current.selectedId}
                   zoom={zoom}
+                  stageRef={stageRef}
                   onSelect={(id) => dispatch({ type: "select", id })}
                   onChange={(id, patch, transient) =>
                     dispatch({ type: "update-object", id, patch }, { transient })
@@ -472,7 +494,7 @@ export default function Customizer({
             variant="primary"
             className="w-full lg:hidden"
             disabled={!canContinue}
-            onClick={() => onContinue(current)}
+            onClick={() => continueWithPreview(current)}
           >
             Continue
           </Button>
@@ -576,7 +598,7 @@ export default function Customizer({
             variant="primary"
             className="hidden w-full lg:flex"
             disabled={!canContinue}
-            onClick={() => onContinue(current)}
+            onClick={() => continueWithPreview(current)}
           >
             Continue
           </Button>

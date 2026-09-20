@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { Stage, Layer, Image as KonvaImage, Rect, Text, Transformer, Group } from "react-konva";
 import type Konva from "konva";
 import type { DesignObject, ImageObject, TextObject } from "@/lib/design";
@@ -15,9 +15,9 @@ import type { EditorAsset } from "@/lib/editor/types";
  * divides on the way out, so nothing screen-dependent is ever written back to
  * the design. Resizing the window or rotating a phone changes only `scale`.
  *
- * Artwork may extend outside the print area — that is allowed and visible
- * while editing — but a clipped group shows the customer exactly what will
- * survive to the production file.
+ * Zoom behaviour: a single pivot Group (centred on the print area) scales
+ * everything — shirt mockup, design objects, and the print-area border — so
+ * zooming feels like a camera zoom rather than a content zoom.
  */
 
 interface Props {
@@ -31,6 +31,7 @@ interface Props {
   onSelect: (id: string | null) => void;
   onChange: (id: string, patch: Partial<DesignObject>, transient: boolean) => void;
   onGestureStart: () => void;
+  stageRef?: React.MutableRefObject<Konva.Stage | null>;
 }
 
 export default function CanvasStage({
@@ -44,6 +45,7 @@ export default function CanvasStage({
   onSelect,
   onChange,
   onGestureStart,
+  stageRef,
 }: Props) {
   const transformerRef = useRef<Konva.Transformer>(null);
   const layerRef = useRef<Konva.Layer>(null);
@@ -79,10 +81,25 @@ export default function CanvasStage({
   const stageWidth = geometry.displayWidth;
   const stageHeight = geometry.displayHeight;
 
+  // Print area rect in display coords (unscaled)
+  const clipX = geometry.printLeft;
+  const clipY = geometry.printTop;
+  const clipW = geometry.printWidth;
+  const clipH = geometry.printHeight;
+
+  // Pivot: keep print-area centre pinned as zoom changes
+  const printCx = clipX + clipW / 2;
+  const printCy = clipY + clipH / 2;
+  const pivotX = printCx * (1 - zoom);
+  const pivotY = printCy * (1 - zoom);
+
   /**
    * Konva applies scale to the node; we fold that back into the object's own
    * scaleX/scaleY and reset the node, so the design never accumulates a
    * separate transform the renderer would have to know about.
+   *
+   * Object coords are in the parent group's LOCAL space (pre-zoom), so we
+   * do NOT divide by zoom here — the group's scaleX handles that.
    */
   function commitTransform(object: DesignObject, node: Konva.Node, transient: boolean) {
     const nodeScaleX = node.scaleX();
@@ -91,8 +108,8 @@ export default function CanvasStage({
     onChange(
       object.id,
       {
-        x: geometry.toPrint(node.x() / zoom),
-        y: geometry.toPrint(node.y() / zoom),
+        x: geometry.toPrint(node.x()),
+        y: geometry.toPrint(node.y()),
         rotation: node.rotation(),
         scaleX: object.scaleX * nodeScaleX,
         scaleY: object.scaleY * nodeScaleY,
@@ -107,10 +124,11 @@ export default function CanvasStage({
   function renderObject(object: DesignObject) {
     if (!object.visible) return null;
 
+    // Positions/sizes are in the pivot group's LOCAL space (no * zoom).
     const common = {
       id: object.id,
-      x: geometry.toScreen(object.x) * zoom,
-      y: geometry.toScreen(object.y) * zoom,
+      x: geometry.toScreen(object.x),
+      y: geometry.toScreen(object.y),
       rotation: object.rotation,
       opacity: object.opacity,
       draggable: !object.locked,
@@ -124,8 +142,8 @@ export default function CanvasStage({
         onChange(
           object.id,
           {
-            x: geometry.toPrint(e.target.x() / zoom),
-            y: geometry.toPrint(e.target.y() / zoom),
+            x: geometry.toPrint(e.target.x()),
+            y: geometry.toPrint(e.target.y()),
           },
           true
         );
@@ -134,8 +152,8 @@ export default function CanvasStage({
         onChange(
           object.id,
           {
-            x: geometry.toPrint(e.target.x() / zoom),
-            y: geometry.toPrint(e.target.y() / zoom),
+            x: geometry.toPrint(e.target.x()),
+            y: geometry.toPrint(e.target.y()),
           },
           true
         );
@@ -149,8 +167,8 @@ export default function CanvasStage({
 
     if (object.type === "text") {
       const text = object as TextObject;
-      const fontSize = geometry.toScreen(text.fontSize) * zoom;
-      const width = geometry.toScreen(text.width) * zoom * text.scaleX;
+      const fontSize = geometry.toScreen(text.fontSize);
+      const width = geometry.toScreen(text.width) * text.scaleX;
 
       return (
         <Text
@@ -164,14 +182,14 @@ export default function CanvasStage({
           fill={text.fill}
           align={text.align}
           width={width}
-          letterSpacing={geometry.toScreen(text.letterSpacing) * zoom}
+          letterSpacing={geometry.toScreen(text.letterSpacing)}
           lineHeight={text.lineHeight}
           stroke={text.strokeColor}
-          strokeWidth={text.strokeWidth ? geometry.toScreen(text.strokeWidth) * zoom : 0}
+          strokeWidth={text.strokeWidth ? geometry.toScreen(text.strokeWidth) : 0}
           shadowColor={text.shadowColor}
-          shadowBlur={text.shadowBlur ? geometry.toScreen(text.shadowBlur) * zoom : 0}
-          shadowOffsetX={text.shadowOffsetX ? geometry.toScreen(text.shadowOffsetX) * zoom : 0}
-          shadowOffsetY={text.shadowOffsetY ? geometry.toScreen(text.shadowOffsetY) * zoom : 0}
+          shadowBlur={text.shadowBlur ? geometry.toScreen(text.shadowBlur) : 0}
+          shadowOffsetX={text.shadowOffsetX ? geometry.toScreen(text.shadowOffsetX) : 0}
+          shadowOffsetY={text.shadowOffsetY ? geometry.toScreen(text.shadowOffsetY) : 0}
           offsetX={width / 2}
           offsetY={fontSize / 2}
           scaleY={text.scaleY / text.scaleX || 1}
@@ -184,8 +202,8 @@ export default function CanvasStage({
     const bitmap = images[image.assetId];
     if (!bitmap) return null;
 
-    const width = geometry.toScreen(image.width) * zoom * image.scaleX;
-    const height = geometry.toScreen(image.height) * zoom * image.scaleY;
+    const width = geometry.toScreen(image.width) * image.scaleX;
+    const height = geometry.toScreen(image.height) * image.scaleY;
 
     return (
       <KonvaImage
@@ -201,17 +219,9 @@ export default function CanvasStage({
     );
   }
 
-  const clipX = geometry.printLeft;
-  const clipY = geometry.printTop;
-  const clipW = geometry.printWidth;
-  const clipH = geometry.printHeight;
-
-  // Pivot for zoom: centre of the print rectangle in screen space
-  const printCx = clipX + clipW / 2;
-  const printCy = clipY + clipH / 2;
-
   return (
     <Stage
+      ref={stageRef}
       width={stageWidth}
       height={stageHeight}
       onMouseDown={(e) => {
@@ -222,24 +232,34 @@ export default function CanvasStage({
       }}
       style={{ touchAction: "none" }}
     >
-      {/* Garment mockup — background only, never part of the print file. */}
+      {/* Background layer: shirt mockup + print-area border, all zoomed together. */}
       <Layer listening={false}>
-        {mockupImage && (
-          <KonvaImage image={mockupImage} width={stageWidth} height={stageHeight} />
-        )}
+        <Group x={pivotX} y={pivotY} scaleX={zoom} scaleY={zoom}>
+          {mockupImage && (
+            <KonvaImage image={mockupImage} width={stageWidth} height={stageHeight} />
+          )}
+          {/* Border stroke/dash compensated so visual thickness stays constant. */}
+          <Rect
+            x={clipX}
+            y={clipY}
+            width={clipW}
+            height={clipH}
+            stroke="#6C3BFF"
+            strokeWidth={1.5 / zoom}
+            dash={[8 / zoom, 6 / zoom]}
+            opacity={0.9}
+          />
+        </Group>
       </Layer>
 
-      {/* Artwork, clipped to the print area so overflow is hidden. */}
+      {/* Artwork layer: objects clipped to the print area, same zoom pivot. */}
       <Layer ref={layerRef}>
-        <Group
-          clipX={clipX}
-          clipY={clipY}
-          clipWidth={clipW}
-          clipHeight={clipH}
-        >
+        <Group x={pivotX} y={pivotY} scaleX={zoom} scaleY={zoom}>
           <Group
-            x={printCx - (clipW / 2) * zoom}
-            y={printCy - (clipH / 2) * zoom}
+            clipX={clipX}
+            clipY={clipY}
+            clipWidth={clipW}
+            clipHeight={clipH}
           >
             {ordered.map(renderObject)}
           </Group>
@@ -260,20 +280,6 @@ export default function CanvasStage({
           boundBoxFunc={(oldBox, newBox) =>
             newBox.width < 20 || newBox.height < 20 ? oldBox : newBox
           }
-        />
-      </Layer>
-
-      {/* Print-area boundary, drawn above artwork so it stays legible. */}
-      <Layer listening={false}>
-        <Rect
-          x={clipX}
-          y={clipY}
-          width={clipW}
-          height={clipH}
-          stroke="#6C3BFF"
-          strokeWidth={1.5}
-          dash={[8, 6]}
-          opacity={0.9}
         />
       </Layer>
     </Stage>
