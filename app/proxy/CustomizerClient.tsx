@@ -145,7 +145,7 @@ function ReviewStep({
       {/* Add to cart / success */}
       {addState === "success" ? (
         <div className="space-y-3">
-          <Alert tone="success">Added to your cart!</Alert>
+          <Alert tone="info">Added to your cart!</Alert>
           <div className="flex gap-3">
             <Button onClick={onBack} className="flex-1">
               Keep customizing
