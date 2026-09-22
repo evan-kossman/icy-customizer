@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { Suspense } from "react";
 import CustomizerClient from "./CustomizerClient";
 import { env } from "@/lib/env";
@@ -23,6 +25,15 @@ export default async function CustomizerPage({
   // signature. This page only needs the identifiers.
   const proxyBase = env().SHOPIFY_APP_PROXY_PREFIX;
 
+  // Read the logo at server time and embed as a data URL so it loads
+  // correctly when the customizer runs under the Shopify proxy domain.
+  let logoDataUrl: string | undefined;
+  try {
+    const logoPath = join(process.cwd(), "public", "icy-logo.avif");
+    const logoBuffer = readFileSync(logoPath);
+    logoDataUrl = `data:image/avif;base64,${logoBuffer.toString("base64")}`;
+  } catch { /* logo not found — header will just be empty */ }
+
   return (
     <Suspense
       fallback={
@@ -33,6 +44,7 @@ export default async function CustomizerPage({
     >
       <CustomizerClient
         proxyBase={proxyBase}
+        logoDataUrl={logoDataUrl}
         productHandle={one("product")}
         productId={one("productId")}
       />

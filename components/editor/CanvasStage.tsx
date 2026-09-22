@@ -108,8 +108,8 @@ export default function CanvasStage({
     onChange(
       object.id,
       {
-        x: geometry.toPrint(node.x()),
-        y: geometry.toPrint(node.y()),
+        x: geometry.toPrint(node.x() - geometry.printLeft),
+        y: geometry.toPrint(node.y() - geometry.printTop),
         rotation: node.rotation(),
         scaleX: object.scaleX * nodeScaleX,
         scaleY: object.scaleY * nodeScaleY,
@@ -127,8 +127,12 @@ export default function CanvasStage({
     // Positions/sizes are in the pivot group's LOCAL space (no * zoom).
     const common = {
       id: object.id,
-      x: geometry.toScreen(object.x),
-      y: geometry.toScreen(object.y),
+      // Object coords are in print-pixel space with origin at print-area top-left.
+      // We add the print-area offset (printLeft/printTop) so the canvas origin
+      // aligns with the print area, keeping hasOverflow and the dashed border
+      // in the same coordinate frame as the rendered objects.
+      x: geometry.printLeft + geometry.toScreen(object.x),
+      y: geometry.printTop + geometry.toScreen(object.y),
       rotation: object.rotation,
       opacity: object.opacity,
       draggable: !object.locked,
@@ -142,8 +146,8 @@ export default function CanvasStage({
         onChange(
           object.id,
           {
-            x: geometry.toPrint(e.target.x()),
-            y: geometry.toPrint(e.target.y()),
+            x: geometry.toPrint(e.target.x() - geometry.printLeft),
+            y: geometry.toPrint(e.target.y() - geometry.printTop),
           },
           true
         );
@@ -152,8 +156,8 @@ export default function CanvasStage({
         onChange(
           object.id,
           {
-            x: geometry.toPrint(e.target.x()),
-            y: geometry.toPrint(e.target.y()),
+            x: geometry.toPrint(e.target.x() - geometry.printLeft),
+            y: geometry.toPrint(e.target.y() - geometry.printTop),
           },
           true
         );

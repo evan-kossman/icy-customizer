@@ -45,6 +45,10 @@ interface Props {
   sessionId: string;
   proxyBase: string;
   initialState?: EditorState;
+  /** When set, syncs the colour picker to this value (used when Back from Review changes colour). */
+  forceColor?: string | null;
+  /** Base64 data URL for the header logo. */
+  logoUrl?: string;
   onContinue: (state: EditorState) => void;
   onClose: () => void;
 }
@@ -54,6 +58,8 @@ export default function Customizer({
   sessionId,
   proxyBase,
   initialState,
+  forceColor,
+  logoUrl,
   onContinue,
   onClose,
 }: Props) {
@@ -71,6 +77,14 @@ export default function Customizer({
       }
   );
 
+  // Sync colour changes that originated in the Review step back into the editor.
+  useEffect(() => {
+    if (!forceColor || forceColor === current.design.color) return;
+    const mockup = mockups.find((m) => m.colorName === forceColor);
+    dispatch({ type: "set-color", color: forceColor, variantId: mockup?.shopifyVariantId ?? null });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forceColor]);
+
   const editor = useEditorState(state);
   const { dispatch, beginGesture, undo, redo, canUndo, canRedo, version } = editor;
   const current = editor.state;
@@ -86,17 +100,53 @@ export default function Customizer({
    */
   function continueWithPreview(editorState: EditorState) {
     let previewUrl: string | null = null;
+    let designOnlyUrl: string | null = null;
+    let printFileUrl: string | null = null;
     try {
+      // Full preview: shirt + design baked together.
       const dataUrl = stageRef.current?.toDataURL({
         mimeType: "image/jpeg",
         quality: 0.8,
         pixelRatio: 1.5,
       });
       previewUrl = dataUrl ?? null;
+
+      // Design-only: transparent PNG (low-res, for review overlay).
+      // Print file: design-only clipped to the print area at full 300 DPI.
+      const layers = stageRef.current?.getLayers();
+      const bgLayer = layers?.[0];
+      if (bgLayer) {
+        bgLayer.opacity(0);
+        bgLayer.batchDraw();
+
+        // Low-res overlay (for review UI)
+        designOnlyUrl = stageRef.current?.toDataURL({ mimeType: "image/png", pixelRatio: 1.5 }) ?? null;
+
+        // High-res print file — clipped to print area at true 300-DPI resolution
+        const printPixelRatio = geometry.printWidth > 0
+          ? config.printArea.widthPx / geometry.printWidth
+          : 1;
+        printFileUrl = stageRef.current?.toDataURL({
+          mimeType: "image/png",
+          pixelRatio: printPixelRatio,
+          x: geometry.printLeft,
+          y: geometry.printTop,
+          width: geometry.printWidth,
+          height: geometry.printHeight,
+        }) ?? null;
+
+        bgLayer.opacity(1);
+        bgLayer.batchDraw();
+      }
     } catch {
       /* canvas might be tainted by cross-origin assets — skip preview */
     }
-    onContinue({ ...editorState, previewUrl } as EditorState & { previewUrl: string | null });
+    onContinue({
+      ...editorState,
+      previewUrl,
+      designOnlyUrl,
+      printFileUrl,
+    } as EditorState & { previewUrl: string | null; designOnlyUrl: string | null; printFileUrl: string | null });
   }
 
   const [uploadBusy, setUploadBusy] = useState(false);
@@ -325,6 +375,17 @@ export default function Customizer({
     const centre = centreOfPrint();
     const fontSize = Math.round(config.printArea.dpi * 0.75); // ~0.75in cap height
 
+    // Auto-pick legible default fill: white on dark shirts, black on light ones.
+    const currentMockup = mockups.find((m) => m.colorName === current.design.color) ?? mockups[0];
+    const defaultFill = (() => {
+      const hex = currentMockup?.colorHex ?? "#ffffff";
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      return luminance < 0.5 ? "#ffffff" : "#111111";
+    })();
+
     const object: TextObject = {
       id: newObjectId(),
       type: "text",
@@ -335,7 +396,7 @@ export default function Customizer({
       italic: false,
       underline: false,
       uppercase: false,
-      fill: "#111111",
+      fill: defaultFill,
       align: "center",
       letterSpacing: 0,
       lineHeight: 1.2,
@@ -436,7 +497,7 @@ export default function Customizer({
         </button>
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={`${process.env.NEXT_PUBLIC_APP_URL ?? "https://wearicy-customizer.vercel.app"}/icy-logo.avif`} alt="Icy" className="h-8 w-auto" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+          {logoUrl && <img src={logoUrl} alt="Icy" className="h-8 w-auto" />}
         </div>
         <span className="hidden text-xs text-white/50 sm:block" aria-live="polite">
           {saveLabel}
@@ -486,9 +547,7 @@ export default function Customizer({
               >
                 <i className={`fa-solid ${zoomedIn ? "fa-magnifying-glass-minus" : "fa-magnifying-glass-plus"}`} />
               </IconButton>
-              <span className="min-w-[3rem] text-center text-xs text-muted">
-                {zoomedIn ? "Zoomed" : "Full"}
-              </span>
+
             </div>
 
             {overflow && (
@@ -501,18 +560,12 @@ export default function Customizer({
             )}
           </div>
 
-          <Button
-            variant="primary"
-            className="w-full lg:hidden"
-            disabled={!canContinue}
-            onClick={() => continueWithPreview(current)}
-          >
-            Continue
-          </Button>
+
         </div>
 
         {/* Controls */}
-        <div className="space-y-4 lg:overflow-y-auto lg:pb-4">
+        <div className="flex flex-col lg:overflow-hidden lg:h-full">
+        <div className="flex-1 space-y-4 overflow-y-auto pb-4">
           <ColorPanel
             mockups={mockups}
             selectedColor={current.design.color}
@@ -608,16 +661,20 @@ export default function Customizer({
 
 
         </div>
+
+          {/* Continue — full-width, sticks to the bottom of the right column */}
+          <div className="pt-3 pb-2 bg-white border-t border-line mt-auto">
+            <Button
+              variant="primary"
+              className="w-full"
+              disabled={!canContinue}
+              onClick={() => continueWithPreview(current)}
+            >
+              Continue
+            </Button>
+          </div>
+        </div>
       </div>
-      {/* Floating Continue button — desktop only, pinned to bottom-right of viewport */}
-      <Button
-        variant="primary"
-        className="hidden lg:flex fixed bottom-6 right-6 z-30 px-8 shadow-xl"
-        disabled={!canContinue}
-        onClick={() => continueWithPreview(current)}
-      >
-        Continue
-      </Button>
     </div>
   );
 }

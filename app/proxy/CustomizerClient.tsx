@@ -18,6 +18,9 @@ function ReviewStep({
   design,
   assets,
   previewUrl,
+  designOnlyUrl,
+  printFileUrl,
+  proxyBase,
   onBack,
 }: {
   bootstrap: EditorBootstrap;
@@ -25,7 +28,10 @@ function ReviewStep({
   design: EditorState["design"];
   assets: EditorState["assets"];
   previewUrl: string | null;
-  onBack: () => void;
+  designOnlyUrl: string | null;
+  printFileUrl: string | null;
+  proxyBase: string;
+  onBack: (selectedColor?: string) => void;
 }) {
   const { product, mockups } = bootstrap;
 
@@ -85,6 +91,29 @@ function ReviewStep({
     setAddState("loading");
     setAddError(null);
     try {
+      // Step 1: Persist the design and get permanent Blob URLs.
+      let finalPreviewUrl: string | null = previewUrl;
+      let finalPrintUrl: string | null = printFileUrl;
+      let designPublicId: string | null = null;
+      try {
+        const finalizeRes = await proxyFetch(`${proxyBase}/api/finalize-design`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId,
+            previewDataUrl: previewUrl,
+            printFileDataUrl: printFileUrl,
+          }),
+        });
+        if (finalizeRes.ok) {
+          const data = await finalizeRes.json();
+          finalPreviewUrl = data.previewUrl ?? finalPreviewUrl;
+          finalPrintUrl = data.printUrl ?? finalPrintUrl;
+          designPublicId = data.designPublicId ?? null;
+        }
+      } catch { /* non-fatal: cart add proceeds with local data URLs */ }
+
+      // Step 2: Add to Shopify cart with design URLs as line-item properties.
       const res = await fetch("/cart/add.js", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -95,7 +124,10 @@ function ReviewStep({
               quantity: 1,
               properties: {
                 _design_id: sessionId,
+                ...(designPublicId ? { _design_public_id: designPublicId } : {}),
                 _design_color: design.color ?? "",
+                ...(finalPreviewUrl ? { _design_preview_url: finalPreviewUrl } : {}),
+                ...(finalPrintUrl ? { _design_print_url: finalPrintUrl } : {}),
               },
             },
           ],
@@ -122,7 +154,7 @@ function ReviewStep({
     <main className="mx-auto max-w-lg p-4 space-y-6">
       {/* Back */}
       <button
-        onClick={onBack}
+        onClick={() => onBack(selectedOptions[product.options.find(o => o.name.toLowerCase() === "color" || o.name.toLowerCase() === "colour")?.name ?? ""] || design.color || undefined)}
         className="flex items-center gap-1 text-sm text-muted hover:text-foreground transition-colors"
       >
         <i className="fa-solid fa-arrow-left" />
@@ -131,13 +163,18 @@ function ReviewStep({
 
       <h1 className="text-xl font-semibold">Review your design</h1>
 
-      {/* Design preview — canvas snapshot baked at Continue time, replaced by
-           the matching colour mockup when the customer swaps colour here. */}
-      <div className="rounded-xl overflow-hidden border border-border bg-muted/20">
-        {displayMockupUrl ? (
+      {/* Design preview — mockup for the selected colour with the design overlay on top */}
+      <div className="rounded-xl overflow-hidden border border-border bg-muted/20 relative">
+        {displayMockupUrl && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={displayMockupUrl} alt="Product preview" className="w-full object-contain" />
-        ) : null}
+          <img src={displayMockupUrl} alt="Product preview" className="w-full object-contain block" />
+        )}
+        {designOnlyUrl && displayMockupUrl && (
+          // Transparent-background design PNG captured from the canvas, overlaid
+          // at the same proportions so it aligns with any colour mockup.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={designOnlyUrl} alt="" aria-hidden className="absolute inset-0 w-full h-full object-contain" />
+        )}
       </div>
 
       {/* Option selectors */}
@@ -219,7 +256,7 @@ function ReviewStep({
         <div className="space-y-3">
           <Alert tone="info">Added to your cart!</Alert>
           <div className="flex gap-3">
-            <Button onClick={onBack} className="flex-1">
+            <Button onClick={() => onBack()} className="flex-1">
               Keep customizing
             </Button>
             <Button
@@ -259,6 +296,8 @@ interface ReviewPayload {
   design: EditorState["design"];
   assets: EditorState["assets"];
   previewUrl: string | null;
+  designOnlyUrl: string | null;
+  printFileUrl: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -269,10 +308,12 @@ export default function CustomizerClient({
   proxyBase,
   productHandle,
   productId,
+  logoDataUrl,
 }: {
   proxyBase: string;
   productHandle: string | null;
   productId: string | null;
+  logoDataUrl?: string;
 }) {
   const [bootstrap, setBootstrap] = useState<EditorBootstrap | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -287,6 +328,9 @@ export default function CustomizerClient({
     design: EditorState["design"];
     assets: EditorState["assets"];
   } | null>(null);
+
+  // Track colour the customer selected in Review so the editor can sync it.
+  const [reviewSelectedColor, setReviewSelectedColor] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -407,42 +451,67 @@ export default function CustomizerClient({
         design={reviewPayload.design}
         assets={reviewPayload.assets}
         previewUrl={reviewPayload.previewUrl}
-        onBack={() => {
+        designOnlyUrl={reviewPayload.designOnlyUrl}
+        printFileUrl={reviewPayload.printFileUrl}
+        proxyBase={proxyBase}
+        onBack={(selectedColor) => {
+          if (selectedColor) setReviewSelectedColor(selectedColor);
           window.history.back();
           setStep("editor");
-          setReviewPayload(null);
         }}
       />
     );
   }
 
+  // Always mount Customizer so its undo/redo history survives the Review step.
+  // Show/hide with CSS rather than conditional rendering.
   return (
-    <Customizer
-      bootstrap={bootstrap}
-      sessionId={sessionId}
-      proxyBase={proxyBase}
-      initialState={
-        lastEditorState
-          ? { design: lastEditorState.design, assets: lastEditorState.assets, selectedId: null }
-          : undefined
-      }
-      onClose={() => {
-        window.location.href = `/products/${bootstrap.product.handle}`;
-      }}
-      onContinue={(state: EditorState & { previewUrl?: string | null }) => {
-        setLastEditorState({ design: state.design, assets: state.assets });
-        const payload: ReviewPayload = {
-          design: state.design,
-          assets: state.assets,
-          previewUrl: state.previewUrl ?? null,
-        };
-        window.sessionStorage.setItem(
-          `icy:review:${sessionId}`,
-          JSON.stringify(payload)
-        );
-        window.history.pushState({ step: "review" }, "", `?step=review`);
-        window.dispatchEvent(new CustomEvent("icy:continue"));
-      }}
-    />
+    <>
+      <div className={step === "review" ? "hidden" : undefined}>
+        <Customizer
+          bootstrap={bootstrap}
+          sessionId={sessionId}
+          proxyBase={proxyBase}
+          forceColor={reviewSelectedColor}
+          logoUrl={logoDataUrl}
+          onClose={() => {
+            window.location.href = `/products/${bootstrap.product.handle}`;
+          }}
+          onContinue={(state: EditorState & { previewUrl?: string | null; designOnlyUrl?: string | null; printFileUrl?: string | null }) => {
+            setLastEditorState({ design: state.design, assets: state.assets });
+            const payload: ReviewPayload = {
+              design: state.design,
+              assets: state.assets,
+              previewUrl: state.previewUrl ?? null,
+              designOnlyUrl: state.designOnlyUrl ?? null,
+              printFileUrl: state.printFileUrl ?? null,
+            };
+            window.sessionStorage.setItem(
+              `icy:review:${sessionId}`,
+              JSON.stringify(payload)
+            );
+            window.history.pushState({ step: "review" }, "", `?step=review`);
+            window.dispatchEvent(new CustomEvent("icy:continue"));
+          }}
+        />
+      </div>
+      {step === "review" && reviewPayload && (
+        <ReviewStep
+          bootstrap={bootstrap}
+          sessionId={sessionId}
+          design={reviewPayload.design}
+          assets={reviewPayload.assets}
+          previewUrl={reviewPayload.previewUrl}
+          designOnlyUrl={reviewPayload.designOnlyUrl}
+          printFileUrl={reviewPayload.printFileUrl}
+          proxyBase={proxyBase}
+          onBack={(selectedColor) => {
+            if (selectedColor) setReviewSelectedColor(selectedColor);
+            window.history.back();
+            setStep("editor");
+          }}
+        />
+      )}
+    </>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { Card, Button } from "../ui";
 import type { TextObject } from "@/lib/design";
 import type { EditorFont } from "@/lib/editor/types";
@@ -22,14 +23,13 @@ function optionFor(index: number) {
   return index === 0 ? TEXT_OPTION_1 : TEXT_OPTION_2;
 }
 
-/** Deduplicate fonts by base family name (#5).
+/** Deduplicate fonts by base family name.
  *  Fonts that differ only in weight/style (Bold, Italic, etc.) are collapsed
  *  into a single entry — bold/italic are driven by the style toggles below. */
 function dedupFonts(fonts: EditorFont[]): EditorFont[] {
   const seen = new Set<string>();
   const result: EditorFont[] = [];
   for (const f of fonts) {
-    // Strip common weight/style suffixes to get the base family name.
     const base = f.displayName
       .replace(/[\s-]*(bold|italic|oblique|light|thin|medium|semibold|black|heavy|regular|roman|demi|condensed|extended|narrow|wide|book)[\s-]*/gi, " ")
       .trim()
@@ -40,6 +40,106 @@ function dedupFonts(fonts: EditorFont[]): EditorFont[] {
     }
   }
   return result;
+}
+
+/** Preload a font into the browser so it renders in the dropdown. */
+function ensureFontLoaded(font: EditorFont) {
+  if (!font.url) return;
+  const id = `font-face-${font.id}`;
+  if (document.getElementById(id)) return;
+  const style = document.createElement("style");
+  style.id = id;
+  style.textContent = `@font-face { font-family: '${font.family}'; src: url('${font.url}'); font-display: swap; }`;
+  document.head.appendChild(style);
+}
+
+/** Custom font picker dropdown — renders each font name in its own typeface. */
+function FontPicker({
+  fonts,
+  value,
+  onChange,
+}: {
+  fonts: EditorFont[];
+  value: string;
+  onChange: (family: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Inject @font-face rules for all fonts so the browser can render them in the list.
+  useEffect(() => {
+    fonts.forEach(ensureFontLoaded);
+  }, [fonts]);
+
+  // Close on outside click.
+  useEffect(() => {
+    if (!open) return;
+    function handle(e: MouseEvent) {
+      if (!containerRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [open]);
+
+  // Scroll selected item into view when list opens.
+  useEffect(() => {
+    if (!open || !listRef.current) return;
+    const el = listRef.current.querySelector("[data-selected='true']") as HTMLElement | null;
+    el?.scrollIntoView({ block: "nearest" });
+  }, [open]);
+
+  const selected = fonts.find((f) => f.family === value) ?? fonts[0];
+
+  return (
+    <div ref={containerRef} className="relative w-full">
+      {/* Trigger */}
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between rounded-lg border border-line bg-white px-3 py-2 text-sm focus:border-accent focus:outline-none"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span style={{ fontFamily: selected?.family }}>{selected?.displayName ?? value}</span>
+        <i className={`fa-solid fa-chevron-${open ? "up" : "down"} ml-2 text-xs text-muted`} />
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div
+          ref={listRef}
+          role="listbox"
+          aria-label="Font"
+          className="absolute z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-line bg-white shadow-lg"
+        >
+          {fonts.map((font) => {
+            const isSelected = font.family === value;
+            return (
+              <div
+                key={font.id}
+                role="option"
+                aria-selected={isSelected}
+                data-selected={isSelected ? "true" : undefined}
+                onMouseDown={() => {
+                  onChange(font.family);
+                  setOpen(false);
+                }}
+                className={`cursor-pointer px-3 py-2 text-sm transition-colors ${
+                  isSelected
+                    ? "bg-ink text-white"
+                    : "hover:bg-canvas text-ink"
+                }`}
+                style={{ fontFamily: font.family }}
+              >
+                {font.displayName}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 const ALIGN_ORDER = ["left", "center", "right"] as const;
@@ -104,24 +204,16 @@ export default function TextPanel({
           <div className="rounded-xl border border-line bg-canvas p-3 space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted">{option.label} — Style</p>
 
-            {/* Row 1: Font (#7) */}
+            {/* Font picker */}
             {uniqueFonts.length > 0 && (
-              <select
+              <FontPicker
+                fonts={uniqueFonts}
                 value={selected.fontFamily}
-                onChange={(e) => onChange({ fontFamily: e.target.value })}
-                className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm focus:border-accent focus:outline-none"
-                style={{ fontFamily: selected.fontFamily }}
-                aria-label="Font"
-              >
-                {uniqueFonts.map((font) => (
-                  <option key={font.id} value={font.family} style={{ fontFamily: font.family }}>
-                    {font.displayName}
-                  </option>
-                ))}
-              </select>
+                onChange={(family) => onChange({ fontFamily: family })}
+              />
             )}
 
-            {/* Row 2: Colour · Align (single cycle) · Bold · Italic · All Caps (#7) */}
+            {/* Row 2: Colour · Align (single cycle) · Bold · Italic · All Caps */}
             <div className="flex items-center gap-1.5">
               {/* Colour swatch */}
               <input
@@ -133,7 +225,7 @@ export default function TextPanel({
                 title="Text colour"
               />
 
-              {/* Alignment — single toggle button (#7) */}
+              {/* Alignment — single toggle button */}
               <button
                 onClick={cycleAlign}
                 title={`Align ${selected.align ?? "left"} (click to cycle)`}
