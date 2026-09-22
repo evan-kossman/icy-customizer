@@ -327,6 +327,7 @@ export default function CustomizerClient({
   const [lastEditorState, setLastEditorState] = useState<{
     design: EditorState["design"];
     assets: EditorState["assets"];
+    selectedId: null;
   } | null>(null);
 
   // Track colour the customer selected in Review so the editor can sync it.
@@ -448,28 +449,9 @@ export default function CustomizerClient({
     );
   }
 
-  if (step === "review" && reviewPayload) {
-    return (
-      <ReviewStep
-        bootstrap={bootstrap}
-        sessionId={sessionId}
-        design={reviewPayload.design}
-        assets={reviewPayload.assets}
-        previewUrl={reviewPayload.previewUrl}
-        designOnlyUrl={reviewPayload.designOnlyUrl}
-        printFileUrl={printFileRef.current}
-        proxyBase={proxyBase}
-        onBack={(selectedColor) => {
-          if (selectedColor) setReviewSelectedColor(selectedColor);
-          window.history.back();
-          setStep("editor");
-        }}
-      />
-    );
-  }
-
-  // Always mount Customizer so its undo/redo history survives the Review step.
-  // Show/hide with CSS rather than conditional rendering.
+  // Always mount Customizer (hidden via CSS during review) so its state and
+  // undo/redo history survive the round-trip. ReviewStep is conditionally
+  // rendered alongside it — never as an early return that would unmount Customizer.
   return (
     <>
       <div className={step === "review" ? "hidden" : undefined}>
@@ -479,11 +461,12 @@ export default function CustomizerClient({
           proxyBase={proxyBase}
           forceColor={reviewSelectedColor}
           logoUrl={logoDataUrl}
+          initialState={lastEditorState ?? undefined}
           onClose={() => {
             window.location.href = `/products/${bootstrap.product.handle}`;
           }}
           onContinue={(state: EditorState & { previewUrl?: string | null; designOnlyUrl?: string | null; printFileUrl?: string | null }) => {
-            setLastEditorState({ design: state.design, assets: state.assets });
+            setLastEditorState({ design: state.design, assets: state.assets, selectedId: null });
             // Keep the large print file in a ref — never in sessionStorage.
             printFileRef.current = state.printFileUrl ?? null;
             const payload: ReviewPayload = {

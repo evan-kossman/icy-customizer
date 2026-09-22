@@ -102,6 +102,10 @@ export default function Customizer({
   const pendingContinueRef = useRef<EditorState | null>(null);
 
   function captureAndContinue(editorState: EditorState) {
+    // Deselect everything so transformer handles don't appear in the preview.
+    if (editorState.selectedId) {
+      dispatch({ type: "select", id: null as unknown as string });
+    }
     let previewUrl: string | null = null;
     let designOnlyUrl: string | null = null;
     let printFileUrl: string | null = null;
@@ -146,6 +150,7 @@ export default function Customizer({
     }
     onContinue({
       ...editorState,
+      selectedId: null,  // never carry selection into review
       previewUrl,
       designOnlyUrl,
       printFileUrl,
