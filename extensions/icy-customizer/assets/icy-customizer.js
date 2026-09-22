@@ -114,15 +114,25 @@
 
       // Insert the Customize button only into the primary form.
       if (form !== primaryForm) return;
-      // Page-level guard: if a --block button already exists anywhere (e.g. inserted
-      // on a previous MutationObserver pass when the sticky bar became primaryForm),
-      // don't insert a second one. --block is exclusive to the product page; --card
-      // buttons on collection grids are unaffected by this check.
+      // Page-level guard: never insert a second --block button.
       if (document.querySelector(".icy-customize-btn--block")) return;
 
       var button = makeButton(current.handle, current.id, "icy-customize-btn--block");
-      if (anchor && anchor.parentNode) {
-        anchor.parentNode.insertBefore(button, anchor);
+
+      // Always target the submit button inside .product-form__quantity__add__buttons
+      // (Dawn's "Add to bag" container). Using the first submit in the whole form
+      // as the anchor can land the button above the variant pickers instead.
+      // Fall back to the first submit found (anchor) for non-Dawn themes.
+      var preferredContainer = form.querySelector(
+        ".product-form__quantity__add__buttons, .product-form__buttons"
+      );
+      var preferredAnchor = preferredContainer
+        ? preferredContainer.querySelector('button[type="submit"], input[type="submit"], [name="add"]')
+        : null;
+      var insertAnchor = preferredAnchor || anchor;
+
+      if (insertAnchor && insertAnchor.parentNode) {
+        insertAnchor.parentNode.insertBefore(button, insertAnchor);
       } else {
         form.appendChild(button);
       }
