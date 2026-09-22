@@ -137,6 +137,17 @@
         form.appendChild(button);
       }
     });
+
+    // Cleanup: remove any --block Customize button that ended up outside the
+    // product form's buttons container (e.g. above variant pickers). This
+    // catches any edge-case where the anchor heuristic mis-placed the button,
+    // or where a previous run left a stale button after a DOM replacement.
+    var stray = document.querySelectorAll(".icy-customize-btn--block");
+    Array.prototype.forEach.call(stray, function (btn) {
+      if (!btn.closest(".product-form__quantity__add__buttons, .product-form__buttons")) {
+        btn.parentNode && btn.parentNode.removeChild(btn);
+      }
+    });
   }
 
   // -------------------------------------------------------------------------
