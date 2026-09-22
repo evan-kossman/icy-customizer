@@ -15,6 +15,7 @@ interface Props {
   onUpdate: (id: string, patch: Partial<DesignObject>) => void;
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
+  onCenter?: (id: string, axis: "both" | "horizontal" | "vertical") => void;
 }
 
 function layerLabel(object: DesignObject): string {
@@ -43,6 +44,7 @@ export default function LayersPanel({
   onUpdate,
   onDuplicate,
   onDelete,
+  onCenter,
 }: Props) {
   const ordered = [...objects].sort((a, b) => b.zIndex - a.zIndex);
 
@@ -95,6 +97,17 @@ export default function LayersPanel({
                 >
                   <i className={`fa-solid ${object.locked ? "fa-lock" : "fa-lock-open"} text-xs`} />
                 </IconButton>
+
+                {selected && onCenter && (
+                  <>
+                    <IconButton label="Center horizontally" onClick={() => onCenter(object.id, "horizontal")}>
+                      <i className="fa-solid fa-arrows-left-right text-xs" />
+                    </IconButton>
+                    <IconButton label="Center vertically" onClick={() => onCenter(object.id, "vertical")}>
+                      <i className="fa-solid fa-arrows-up-down text-xs" />
+                    </IconButton>
+                  </>
+                )}
 
                 <IconButton label="Move layer up" onClick={() => onReorder(object.id, "forward")}>
                   <i className="fa-solid fa-chevron-up text-xs" />

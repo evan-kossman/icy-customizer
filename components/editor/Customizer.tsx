@@ -77,7 +77,7 @@ export default function Customizer({
 
   useEffect(() => setState(current), [current]);
 
-  const [zoom, setZoom] = useState(1);
+  const [zoomedIn, setZoomedIn] = useState(false);
   const stageRef = useRef<import("konva/lib/Stage").Stage | null>(null);
 
   /**
@@ -125,6 +125,11 @@ export default function Customizer({
     },
     printWidthPx: config.printArea.widthPx,
   });
+
+  // Two-level zoom: out = full shirt (1×), in = print area fills the viewport.
+  const zoom = zoomedIn
+    ? Math.round((geometry.displayWidth / Math.max(geometry.printWidth, 1)) * 100) / 100
+    : 1;
 
   const saveStatus = useAutosave({
     sessionId,
@@ -366,6 +371,21 @@ export default function Customizer({
   );
 
   // -------------------------------------------------------------------------
+  // Alignment helpers
+  // -------------------------------------------------------------------------
+
+  const handleCenter = useCallback(
+    (id: string, axis: "both" | "horizontal" | "vertical") => {
+      const centre = centreOfPrint();
+      const patch: Partial<DesignObject> = {};
+      if (axis === "horizontal" || axis === "both") patch.x = centre.x;
+      if (axis === "vertical" || axis === "both") patch.y = centre.y;
+      dispatch({ type: "update-object", id, patch });
+    },
+    [centreOfPrint, dispatch]
+  );
+
+  // -------------------------------------------------------------------------
   // Keyboard shortcuts
   // -------------------------------------------------------------------------
 
@@ -459,25 +479,16 @@ export default function Customizer({
 
               <span className="h-5 w-px bg-line" aria-hidden />
 
-              {/* Zoom — only scales the design layer, canvas stays fixed (#2) */}
-              <IconButton label="Zoom out" onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))}>
-                <i className="fa-solid fa-magnifying-glass-minus" />
-              </IconButton>
-              <span className="min-w-[3rem] text-center text-xs text-muted">{Math.round(zoom * 100)}%</span>
-              <IconButton label="Zoom in" onClick={() => setZoom((z) => Math.min(3, z + 0.25))}>
-                <i className="fa-solid fa-magnifying-glass-plus" />
-              </IconButton>
-
-              {/* Fit to design: zoom so the print area fills the view (#3) */}
+              {/* Zoom toggle — two levels only: full shirt or print-area fill */}
               <IconButton
-                label="Fit to design"
-                onClick={() => {
-                  const frac = activeMockup?.printArea?.width ?? 0.5;
-                  setZoom(Math.round((1 / frac) * 100) / 100);
-                }}
+                label={zoomedIn ? "Zoom out (show full shirt)" : "Zoom in (fill print area)"}
+                onClick={() => setZoomedIn((z) => !z)}
               >
-                <i className="fa-solid fa-expand" />
+                <i className={`fa-solid ${zoomedIn ? "fa-magnifying-glass-minus" : "fa-magnifying-glass-plus"}`} />
               </IconButton>
+              <span className="min-w-[3rem] text-center text-xs text-muted">
+                {zoomedIn ? "Zoomed" : "Full"}
+              </span>
             </div>
 
             {overflow && (
@@ -592,18 +603,21 @@ export default function Customizer({
             onUpdate={(id, patch) => dispatch({ type: "update-object", id, patch })}
             onDuplicate={(id) => dispatch({ type: "duplicate-object", id })}
             onDelete={(id) => dispatch({ type: "remove-object", id })}
+            onCenter={handleCenter}
           />
 
-          <Button
-            variant="primary"
-            className="hidden w-full lg:flex"
-            disabled={!canContinue}
-            onClick={() => continueWithPreview(current)}
-          >
-            Continue
-          </Button>
+
         </div>
       </div>
+      {/* Floating Continue button — desktop only, pinned to bottom-right of viewport */}
+      <Button
+        variant="primary"
+        className="hidden lg:flex fixed bottom-6 right-6 z-30 px-8 shadow-xl"
+        disabled={!canContinue}
+        onClick={() => continueWithPreview(current)}
+      >
+        Continue
+      </Button>
     </div>
   );
 }

@@ -68,71 +68,59 @@
     var current = config.currentProduct;
     if (!current || !current.customizable) return;
 
-    var forms = document.querySelectorAll('form[action*="/cart/add"]');
+    var forms = Array.prototype.slice.call(
+      document.querySelectorAll('form[action*="/cart/add"]')
+    );
     if (!forms.length) return;
 
-    // Only inject one Customize button per page — themes like Dawn render
-    // a second (sticky) product form that would otherwise get its own button.
-    var pageButtonAdded = false;
-
-    Array.prototype.forEach.call(forms, function (form) {
-      if (form.hasAttribute("data-icy-handled")) return;
-      if (pageButtonAdded) {
-        // Still mark the form as handled so we hide its submit + dynamic checkout.
-        form.setAttribute("data-icy-handled", "true");
-        form.setAttribute("data-icy-product-handle", current.handle);
-        var extraSubmits = form.querySelectorAll('button[type="submit"], input[type="submit"], [name="add"]');
-        Array.prototype.forEach.call(extraSubmits, function (btn) {
-          btn.disabled = true;
-          btn.setAttribute("aria-hidden", "true");
-          btn.setAttribute("data-icy-disabled", "true");
-          btn.style.display = "none";
-        });
-        var extraDynamic = form.querySelectorAll(".shopify-payment-button, [data-shopify='payment-button']");
-        Array.prototype.forEach.call(extraDynamic, function (el) {
-          el.style.display = "none";
-          el.setAttribute("data-icy-disabled", "true");
-        });
-        return;
+    // Identify the primary form: the one containing the standard Dawn-theme
+    // quantity/add buttons wrapper. That is the visible product form — not the
+    // sticky bar or any secondary form. Fall back to the first form when the
+    // selector doesn't match (non-Dawn themes).
+    var primaryForm = null;
+    for (var i = 0; i < forms.length; i++) {
+      if (forms[i].querySelector('.product-form__quantity__add__buttons, .product-form__buttons')) {
+        primaryForm = forms[i];
+        break;
       }
-      form.setAttribute("data-icy-handled", "true");
+    }
+    if (!primaryForm) primaryForm = forms[0];
 
-      // Mark the form so the fetch interceptor can identify it later.
+    forms.forEach(function (form) {
+      if (form.hasAttribute("data-icy-handled")) return;
+      form.setAttribute("data-icy-handled", "true");
       form.setAttribute("data-icy-product-handle", current.handle);
 
+      // Hide submit and dynamic-checkout buttons on every form.
       var submits = form.querySelectorAll(
         'button[type="submit"], input[type="submit"], [name="add"]'
+      );
+      var dynamic = form.querySelectorAll(
+        ".shopify-payment-button, [data-shopify='payment-button']"
       );
 
       var anchor = null;
       Array.prototype.forEach.call(submits, function (btn) {
-        // Disable rather than remove: themes often rely on these nodes existing
-        // for variant-availability updates, and removing them breaks scripts.
         btn.disabled = true;
         btn.setAttribute("aria-hidden", "true");
         btn.setAttribute("data-icy-disabled", "true");
         btn.style.display = "none";
         if (!anchor) anchor = btn;
       });
+      Array.prototype.forEach.call(dynamic, function (el) {
+        el.style.display = "none";
+        el.setAttribute("data-icy-disabled", "true");
+      });
+
+      // Insert the Customize button only into the primary form.
+      if (form !== primaryForm) return;
 
       var button = makeButton(current.handle, current.id, "icy-customize-btn--block");
-
       if (anchor && anchor.parentNode) {
         anchor.parentNode.insertBefore(button, anchor);
       } else {
         form.appendChild(button);
       }
-
-      pageButtonAdded = true;
-
-      // Dynamic checkout buttons bypass the cart entirely, so they must go too.
-      var dynamic = form.querySelectorAll(
-        ".shopify-payment-button, [data-shopify='payment-button']"
-      );
-      Array.prototype.forEach.call(dynamic, function (el) {
-        el.style.display = "none";
-        el.setAttribute("data-icy-disabled", "true");
-      });
     });
   }
 

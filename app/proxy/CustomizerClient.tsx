@@ -46,6 +46,13 @@ function ReviewStep({
     return initial;
   });
 
+  // Track which mockup image to show — starts with the canvas snapshot (or
+  // the initial colour mockup) and updates to the new colour mockup when the
+  // user changes the Colour option.
+  const [displayMockupUrl, setDisplayMockupUrl] = useState<string | null>(
+    previewUrl ?? mockup?.url ?? null
+  );
+
   // Resolve the currently selected variant
   const selectedVariant: EditorVariant | undefined = product.variants.find((v) =>
     v.selectedOptions.every((o) => selectedOptions[o.name] === o.value)
@@ -124,14 +131,12 @@ function ReviewStep({
 
       <h1 className="text-xl font-semibold">Review your design</h1>
 
-      {/* Design preview — canvas snapshot if available, otherwise plain mockup */}
+      {/* Design preview — canvas snapshot baked at Continue time, replaced by
+           the matching colour mockup when the customer swaps colour here. */}
       <div className="rounded-xl overflow-hidden border border-border bg-muted/20">
-        {previewUrl ? (
+        {displayMockupUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={previewUrl} alt="Your custom design" className="w-full object-contain" />
-        ) : mockup ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={mockup.url} alt="Product mockup" className="w-full object-contain" />
+          <img src={displayMockupUrl} alt="Product preview" className="w-full object-contain" />
         ) : null}
       </div>
 
@@ -145,7 +150,14 @@ function ReviewStep({
               return (
                 <button
                   key={val}
-                  onClick={() => setSelectedOptions((prev) => ({ ...prev, [opt.name]: val }))}
+                  onClick={() => {
+                    setSelectedOptions((prev) => ({ ...prev, [opt.name]: val }));
+                    const lower = opt.name.toLowerCase();
+                    if (lower === "color" || lower === "colour") {
+                      const newMockup = mockups.find((m) => m.colorName === val);
+                      if (newMockup) setDisplayMockupUrl(newMockup.url);
+                    }
+                  }}
                   className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
                     active
                       ? "border-primary bg-primary/10 text-primary font-medium"
@@ -269,6 +281,12 @@ export default function CustomizerClient({
   // Step state
   const [step, setStep] = useState<"editor" | "review">("editor");
   const [reviewPayload, setReviewPayload] = useState<ReviewPayload | null>(null);
+
+  // Preserve the last editor design so Back from Review restores it.
+  const [lastEditorState, setLastEditorState] = useState<{
+    design: EditorState["design"];
+    assets: EditorState["assets"];
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -403,10 +421,16 @@ export default function CustomizerClient({
       bootstrap={bootstrap}
       sessionId={sessionId}
       proxyBase={proxyBase}
+      initialState={
+        lastEditorState
+          ? { design: lastEditorState.design, assets: lastEditorState.assets, selectedId: null }
+          : undefined
+      }
       onClose={() => {
         window.location.href = `/products/${bootstrap.product.handle}`;
       }}
       onContinue={(state: EditorState & { previewUrl?: string | null }) => {
+        setLastEditorState({ design: state.design, assets: state.assets });
         const payload: ReviewPayload = {
           design: state.design,
           assets: state.assets,
