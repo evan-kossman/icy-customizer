@@ -1,7 +1,7 @@
 "use client";
 import { proxyFetch } from "@/lib/client-token";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Customizer from "@/components/editor/Customizer";
 import type { EditorBootstrap, EditorMockup, EditorState, EditorVariant } from "@/lib/editor/types";
 import type { ImageObject } from "@/lib/design";
@@ -332,6 +332,11 @@ export default function CustomizerClient({
   // Track colour the customer selected in Review so the editor can sync it.
   const [reviewSelectedColor, setReviewSelectedColor] = useState<string | null>(null);
 
+  // Store the print file data URL in a ref — it can be 10+ MB as base64 and
+  // must NOT go into sessionStorage (5 MB quota). The ref survives re-renders
+  // and is written here before the review step is shown.
+  const printFileRef = useRef<string | null>(null);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -452,7 +457,7 @@ export default function CustomizerClient({
         assets={reviewPayload.assets}
         previewUrl={reviewPayload.previewUrl}
         designOnlyUrl={reviewPayload.designOnlyUrl}
-        printFileUrl={reviewPayload.printFileUrl}
+        printFileUrl={printFileRef.current}
         proxyBase={proxyBase}
         onBack={(selectedColor) => {
           if (selectedColor) setReviewSelectedColor(selectedColor);
@@ -479,12 +484,14 @@ export default function CustomizerClient({
           }}
           onContinue={(state: EditorState & { previewUrl?: string | null; designOnlyUrl?: string | null; printFileUrl?: string | null }) => {
             setLastEditorState({ design: state.design, assets: state.assets });
+            // Keep the large print file in a ref — never in sessionStorage.
+            printFileRef.current = state.printFileUrl ?? null;
             const payload: ReviewPayload = {
               design: state.design,
               assets: state.assets,
               previewUrl: state.previewUrl ?? null,
               designOnlyUrl: state.designOnlyUrl ?? null,
-              printFileUrl: state.printFileUrl ?? null,
+              printFileUrl: null, // stored in printFileRef, not sessionStorage
             };
             window.sessionStorage.setItem(
               `icy:review:${sessionId}`,
@@ -503,7 +510,7 @@ export default function CustomizerClient({
           assets={reviewPayload.assets}
           previewUrl={reviewPayload.previewUrl}
           designOnlyUrl={reviewPayload.designOnlyUrl}
-          printFileUrl={reviewPayload.printFileUrl}
+          printFileUrl={printFileRef.current}
           proxyBase={proxyBase}
           onBack={(selectedColor) => {
             if (selectedColor) setReviewSelectedColor(selectedColor);
