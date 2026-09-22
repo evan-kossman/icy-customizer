@@ -114,9 +114,11 @@
 
       // Insert the Customize button only into the primary form.
       if (form !== primaryForm) return;
-      // Guard against double-insertion on MutationObserver re-runs (e.g. a sticky bar
-      // appearing dynamically and being picked as a new primaryForm on the next pass).
-      if (form.querySelector("[data-icy-customize]")) return;
+      // Page-level guard: if a --block button already exists anywhere (e.g. inserted
+      // on a previous MutationObserver pass when the sticky bar became primaryForm),
+      // don't insert a second one. --block is exclusive to the product page; --card
+      // buttons on collection grids are unaffected by this check.
+      if (document.querySelector(".icy-customize-btn--block")) return;
 
       var button = makeButton(current.handle, current.id, "icy-customize-btn--block");
       if (anchor && anchor.parentNode) {
