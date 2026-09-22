@@ -114,6 +114,9 @@
 
       // Insert the Customize button only into the primary form.
       if (form !== primaryForm) return;
+      // Guard against double-insertion on MutationObserver re-runs (e.g. a sticky bar
+      // appearing dynamically and being picked as a new primaryForm on the next pass).
+      if (form.querySelector("[data-icy-customize]")) return;
 
       var button = makeButton(current.handle, current.id, "icy-customize-btn--block");
       if (anchor && anchor.parentNode) {
