@@ -98,7 +98,10 @@ export default function Customizer({
    * Capture a JPEG preview of the current canvas and pass it to the caller
    * alongside the design state so the review step can display the design.
    */
-  function continueWithPreview(editorState: EditorState) {
+  // Ref to hold a pending "continue" action that fires after zoom resets.
+  const pendingContinueRef = useRef<EditorState | null>(null);
+
+  function captureAndContinue(editorState: EditorState) {
     let previewUrl: string | null = null;
     let designOnlyUrl: string | null = null;
     let printFileUrl: string | null = null;
@@ -148,6 +151,28 @@ export default function Customizer({
       printFileUrl,
     } as EditorState & { previewUrl: string | null; designOnlyUrl: string | null; printFileUrl: string | null });
   }
+
+  // Always transition to review at zoom-out so the preview shows the full shirt.
+  // If already zoomed out, capture immediately. Otherwise reset zoom and wait
+  // one animation frame for Konva to redraw before capturing.
+  function continueWithPreview(editorState: EditorState) {
+    if (!zoomedIn) {
+      captureAndContinue(editorState);
+      return;
+    }
+    pendingContinueRef.current = editorState;
+    setZoomedIn(false);
+  }
+
+  // Fire the deferred capture once zoom has been reset and the canvas redrawn.
+  useEffect(() => {
+    if (zoomedIn || !pendingContinueRef.current) return;
+    const pending = pendingContinueRef.current;
+    pendingContinueRef.current = null;
+    // One rAF to let Konva finish its synchronous redraw after the zoom change.
+    const raf = requestAnimationFrame(() => captureAndContinue(pending));
+    return () => cancelAnimationFrame(raf);
+  }, [zoomedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [uploadBusy, setUploadBusy] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
