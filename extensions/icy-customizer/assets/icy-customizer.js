@@ -73,25 +73,17 @@
     );
     if (!forms.length) return;
 
-    // Identify the primary form: the one containing the standard Dawn-theme
-    // quantity/add buttons wrapper. That is the visible product form — not the
-    // sticky bar or any secondary form. Fall back to the first form when the
-    // selector doesn't match (non-Dawn themes).
-    var primaryForm = null;
-    for (var i = 0; i < forms.length; i++) {
-      if (forms[i].querySelector('.product-form__quantity__add__buttons, .product-form__buttons')) {
-        primaryForm = forms[i];
-        break;
-      }
-    }
-    if (!primaryForm) primaryForm = forms[0];
-
+    // --- Step 1: Mark and hide ALL unhandled cart forms ---
+    // This is separate from button insertion so we don't depend on
+    // which form is "primary" — that detection was unreliable because
+    // Shopify's <product-form> web component renders its children
+    // (including .product-form__buttons) asynchronously after the first
+    // pass of this function.
     forms.forEach(function (form) {
       if (form.hasAttribute("data-icy-handled")) return;
       form.setAttribute("data-icy-handled", "true");
       form.setAttribute("data-icy-product-handle", current.handle);
 
-      // Hide submit and dynamic-checkout buttons on every form.
       var submits = form.querySelectorAll(
         'button[type="submit"], input[type="submit"], [name="add"]'
       );
@@ -99,49 +91,40 @@
         ".shopify-payment-button, [data-shopify='payment-button']"
       );
 
-      var anchor = null;
       Array.prototype.forEach.call(submits, function (btn) {
         btn.disabled = true;
         btn.setAttribute("aria-hidden", "true");
         btn.setAttribute("data-icy-disabled", "true");
         btn.style.display = "none";
-        if (!anchor) anchor = btn;
       });
       Array.prototype.forEach.call(dynamic, function (el) {
         el.style.display = "none";
         el.setAttribute("data-icy-disabled", "true");
       });
-
-      // Insert the Customize button only into the primary form.
-      if (form !== primaryForm) return;
-      // Page-level guard: never insert a second --block button.
-      if (document.querySelector(".icy-customize-btn--block")) return;
-
-      var button = makeButton(current.handle, current.id, "icy-customize-btn--block");
-
-      // Always target the submit button inside .product-form__quantity__add__buttons
-      // (Dawn's "Add to bag" container). Using the first submit in the whole form
-      // as the anchor can land the button above the variant pickers instead.
-      // Fall back to the first submit found (anchor) for non-Dawn themes.
-      var preferredContainer = form.querySelector(
-        ".product-form__quantity__add__buttons, .product-form__buttons"
-      );
-      var preferredAnchor = preferredContainer
-        ? preferredContainer.querySelector('button[type="submit"], input[type="submit"], [name="add"]')
-        : null;
-      var insertAnchor = preferredAnchor || anchor;
-
-      if (insertAnchor && insertAnchor.parentNode) {
-        insertAnchor.parentNode.insertBefore(button, insertAnchor);
-      } else {
-        form.appendChild(button);
-      }
     });
 
-    // Cleanup: remove any --block Customize button that ended up outside the
-    // product form's buttons container (e.g. above variant pickers). This
-    // catches any edge-case where the anchor heuristic mis-placed the button,
-    // or where a previous run left a stale button after a DOM replacement.
+    // --- Step 2: Insert exactly one CUSTOMIZE button into the correct container ---
+    // Target .product-form__quantity__add__buttons (Dawn's "Add to bag" area)
+    // anywhere on the page — not inside a specific form — so this works even
+    // when <product-form> renders its children after our first run().
+    var correctContainer = document.querySelector(
+      ".product-form__quantity__add__buttons, .product-form__buttons"
+    );
+    if (correctContainer && !correctContainer.querySelector(".icy-customize-btn--block")) {
+      var button = makeButton(current.handle, current.id, "icy-customize-btn--block");
+      var anchor = correctContainer.querySelector(
+        'button[type="submit"], input[type="submit"], [name="add"]'
+      );
+      if (anchor) {
+        correctContainer.insertBefore(button, anchor);
+      } else {
+        correctContainer.insertBefore(button, correctContainer.firstChild);
+      }
+    }
+
+    // --- Step 3: Sweep stray buttons outside the correct container ---
+    // Removes any --block button that a previous run placed in the wrong
+    // location (e.g. the installment form before <product-form> rendered).
     var stray = document.querySelectorAll(".icy-customize-btn--block");
     Array.prototype.forEach.call(stray, function (btn) {
       if (!btn.closest(".product-form__quantity__add__buttons, .product-form__buttons")) {
@@ -150,7 +133,7 @@
     });
   }
 
-  // -------------------------------------------------------------------------
+    // -------------------------------------------------------------------------
   // 2. Collection and search grids
   // -------------------------------------------------------------------------
 

@@ -103,9 +103,17 @@ export default function Customizer({
 
   function captureAndContinue(editorState: EditorState) {
     // Deselect everything so transformer handles don't appear in the preview.
+    // If something is selected, we must wait one rAF for Konva to redraw before capturing.
     if (editorState.selectedId) {
       dispatch({ type: "select", id: null as unknown as string });
+      const pendingState = { ...editorState, selectedId: null };
+      requestAnimationFrame(() => doCapture(pendingState));
+      return;
     }
+    doCapture(editorState);
+  }
+
+  function doCapture(editorState: EditorState) {
     let previewUrl: string | null = null;
     let designOnlyUrl: string | null = null;
     let printFileUrl: string | null = null;
@@ -175,7 +183,7 @@ export default function Customizer({
     const pending = pendingContinueRef.current;
     pendingContinueRef.current = null;
     // One rAF to let Konva finish its synchronous redraw after the zoom change.
-    const raf = requestAnimationFrame(() => captureAndContinue(pending));
+    const raf = requestAnimationFrame(() => doCapture(pending));
     return () => cancelAnimationFrame(raf);
   }, [zoomedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -580,15 +588,14 @@ export default function Customizer({
 
             </div>
 
-            {overflow && (
-              <div className="mt-3">
-                <Alert>
-                  Part of your design sits outside the dotted print area. Anything outside it
-                  won&apos;t be printed.
-                </Alert>
-              </div>
-            )}
           </div>
+
+          {overflow && (
+            <Alert>
+              Part of your design sits outside the dotted print area. Anything outside it
+              won&apos;t be printed.
+            </Alert>
+          )}
 
 
         </div>

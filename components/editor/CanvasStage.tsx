@@ -72,6 +72,9 @@ export default function CanvasStage({
 
     if (node && target && !target.locked && target.visible) {
       transformer.nodes([node as Konva.Node]);
+      // Text objects: allow only move + rotate, no resize handles.
+      const isText = target.type === "text";
+      transformer.enabledAnchors(isText ? [] : ["top-left", "top-right", "bottom-left", "bottom-right", "middle-left", "middle-right", "top-center", "bottom-center"]);
     } else {
       transformer.nodes([]);
     }

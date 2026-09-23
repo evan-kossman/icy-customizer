@@ -213,6 +213,28 @@ export default function TextPanel({
               />
             )}
 
+            {/* Font size +/- */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted shrink-0">Size</span>
+              <button
+                type="button"
+                onClick={() => onChange({ fontSize: Math.max(8, (selected.fontSize ?? 24) - 2) })}
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-white text-ink transition-colors hover:bg-canvas shrink-0"
+                aria-label="Decrease font size"
+              >
+                <i className="fa-solid fa-minus text-xs" />
+              </button>
+              <span className="min-w-[2.5rem] text-center text-sm tabular-nums">{selected.fontSize ?? 24}</span>
+              <button
+                type="button"
+                onClick={() => onChange({ fontSize: Math.min(200, (selected.fontSize ?? 24) + 2) })}
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-white text-ink transition-colors hover:bg-canvas shrink-0"
+                aria-label="Increase font size"
+              >
+                <i className="fa-solid fa-plus text-xs" />
+              </button>
+            </div>
+
             {/* Row 2: Colour · Align (single cycle) · Bold · Italic · All Caps */}
             <div className="flex items-center gap-1.5">
               {/* Colour swatch */}
@@ -335,15 +357,23 @@ function TextSlot({ label, maxChars, object, isSelected, onChange, onAdd }: Slot
         </span>
       </div>
       <textarea
+        ref={(el) => {
+          if (!el) return;
+          el.style.height = "auto";
+          el.style.height = el.scrollHeight + "px";
+        }}
         value={object.text}
         onChange={(e) => {
+          const el = e.target;
           const val = e.target.value.slice(0, maxChars);
           onChange({ text: val });
+          el.style.height = "auto";
+          el.style.height = el.scrollHeight + "px";
         }}
         maxLength={maxChars}
-        rows={2}
+        rows={1}
         placeholder="Enter text…"
-        className="w-full resize-none rounded-lg border border-line bg-white px-3 py-2 text-sm focus:border-ink focus:outline-none"
+        className="w-full resize-none overflow-hidden rounded-lg border border-line bg-white px-3 py-2 text-sm focus:border-ink focus:outline-none"
       />
     </div>
   );
