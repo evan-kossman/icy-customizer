@@ -34,6 +34,22 @@ interface Props {
   stageRef?: React.MutableRefObject<Konva.Stage | null>;
 }
 
+let measureCtx: CanvasRenderingContext2D | null = null;
+/** Widest line of `text` in CSS px for the given canvas font string. */
+function measureTextWidth(text: string, font: string, letterSpacing: number): number {
+  if (typeof document === "undefined") return text.length * 10;
+  if (!measureCtx) measureCtx = document.createElement("canvas").getContext("2d");
+  if (!measureCtx) return text.length * 10;
+  measureCtx.font = font;
+  return Math.ceil(
+    Math.max(
+      ...text.split("\n").map(
+        (line) => measureCtx!.measureText(line).width + letterSpacing * line.length
+      )
+    )
+  );
+}
+
 export default function CanvasStage({
   objects,
   assets,
@@ -175,7 +191,16 @@ export default function CanvasStage({
     if (object.type === "text") {
       const text = object as TextObject;
       const fontSize = geometry.toScreen(text.fontSize);
-      const width = geometry.toScreen(text.width) * text.scaleX;
+      const shown = text.uppercase ? text.text.toUpperCase() : text.text;
+      // Size the box to the rendered text so there is no dead space around it.
+      const width = Math.max(
+        measureTextWidth(
+          shown || " ",
+          `${text.italic ? "italic " : ""}${text.fontWeight >= 600 ? "bold " : ""}${fontSize}px "${text.fontFamily}"`,
+          geometry.toScreen(text.letterSpacing)
+        ) * text.scaleX,
+        4
+      );
 
       return (
         <Text
@@ -191,6 +216,7 @@ export default function CanvasStage({
           width={width}
           letterSpacing={geometry.toScreen(text.letterSpacing)}
           lineHeight={text.lineHeight}
+          wrap="none"
           stroke={text.strokeColor}
           strokeWidth={text.strokeWidth ? geometry.toScreen(text.strokeWidth) : 0}
           shadowColor={text.shadowColor}
@@ -283,7 +309,7 @@ export default function CanvasStage({
           anchorFill="#FFFFFF"
           borderStroke="#6C3BFF"
           borderDash={[4, 4]}
-          padding={4}
+          padding={2}
           boundBoxFunc={(oldBox, newBox) =>
             newBox.width < 20 || newBox.height < 20 ? oldBox : newBox
           }

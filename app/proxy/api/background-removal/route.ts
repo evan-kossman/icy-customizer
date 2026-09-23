@@ -106,8 +106,12 @@ export async function POST(req: NextRequest) {
     if (err instanceof SessionError)
       return NextResponse.json({ error: err.message }, { status: 403 });
     console.error("[background-removal]", err);
+    const reason = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
-      { error: "Background removal couldn't be completed. Your original image is still available." },
+      {
+        error: "Background removal couldn't be completed. Your original image is still available.",
+        reason, // provider error text (never contains the API key) — shown for debugging
+      },
       { status: 500 }
     );
   }

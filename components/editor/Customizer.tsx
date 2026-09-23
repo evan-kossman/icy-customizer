@@ -239,7 +239,6 @@ export default function Customizer({
   }, [config.features.ai, customer.loggedIn, proxyBase]);
 
   const selected = current.design.objects.find((o) => o.id === current.selectedId) ?? null;
-  const selectedText = selected?.type === "text" ? (selected as TextObject) : null;
 
   // -------------------------------------------------------------------------
   // Object helpers
@@ -358,7 +357,9 @@ export default function Customizer({
                 },
               });
               setUploadError(
-                "Background removal couldn't be completed. Your original image is still available."
+                err instanceof Error
+                  ? err.message
+                  : "Background removal couldn't be completed. Your original image is still available."
               );
               addImageObject(asset, "image");
             }
@@ -411,7 +412,7 @@ export default function Customizer({
 
   const addText = useCallback(() => {
     const centre = centreOfPrint();
-    const fontSize = Math.round(config.printArea.dpi * 0.75); // ~0.75in cap height
+    const fontSize = 225; // default size; +/- in the text panel ranges 20–400
 
     // Auto-pick legible default fill: white on dark shirts, black on light ones.
     const currentMockup = mockups.find((m) => m.colorName === current.design.color) ?? mockups[0];
@@ -658,20 +659,13 @@ export default function Customizer({
           {config.features.text && (
             <TextPanel
               fonts={fonts}
-              selected={selectedText}
-              printDpi={config.printArea.dpi}
+              selectedId={current.selectedId}
               onAdd={addText}
-              onChange={(patch) =>
-                current.selectedId &&
-                dispatch({
-                  type: "update-object",
-                  id: current.selectedId,
-                  patch: patch as Partial<DesignObject>,
-                })
+              onSelect={(id) => dispatch({ type: "select", id })}
+              onUpdate={(id, patch) =>
+                dispatch({ type: "update-object", id, patch: patch as Partial<DesignObject> })
               }
-              onDelete={() =>
-                current.selectedId && dispatch({ type: "remove-object", id: current.selectedId })
-              }
+              onDelete={(id) => dispatch({ type: "remove-object", id })}
               textObjects={current.design.objects.filter((o) => o.type === "text") as TextObject[]}
             />
           )}

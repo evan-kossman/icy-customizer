@@ -1,17 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Card, Button } from "../ui";
+import { Card } from "../ui";
 import type { TextObject } from "@/lib/design";
 import type { EditorFont } from "@/lib/editor/types";
 
 interface Props {
   fonts: EditorFont[];
-  selected: TextObject | null;
-  printDpi: number;
+  selectedId: string | null;
   onAdd: () => void;
-  onChange: (patch: Partial<TextObject>) => void;
-  onDelete: () => void;
+  onSelect: (id: string) => void;
+  onUpdate: (id: string, patch: Partial<TextObject>) => void;
+  onDelete: (id: string) => void;
   /** All text objects currently on the canvas */
   textObjects?: TextObject[];
 }
@@ -151,143 +151,43 @@ const ALIGN_ICONS: Record<Align, string> = {
   right: "fa-align-right",
 };
 
+const FONT_MIN = 20;
+const FONT_MAX = 400;
+const FONT_STEP = 10;
+
 export default function TextPanel({
   fonts,
-  selected,
-  printDpi: _printDpi,
+  selectedId,
   onAdd,
-  onChange,
+  onSelect,
+  onUpdate,
   onDelete,
   textObjects = [],
 }: Props) {
-  const selectedIndex = selected
-    ? textObjects.findIndex((t) => t.id === selected.id)
-    : -1;
-  const option = selectedIndex >= 0 ? optionFor(selectedIndex) : null;
   const uniqueFonts = dedupFonts(fonts);
-
-  function cycleAlign() {
-    if (!selected) return;
-    const cur = (selected.align ?? "left") as Align;
-    const next = ALIGN_ORDER[(ALIGN_ORDER.indexOf(cur) + 1) % ALIGN_ORDER.length];
-    onChange({ align: next });
-  }
+  const slots = [TEXT_OPTION_1, TEXT_OPTION_2];
 
   return (
     <Card title="Add Your Text">
       <div className="space-y-3">
-        {/* Slot 1 */}
-        <TextSlot
-          label={TEXT_OPTION_1.label}
-          maxChars={TEXT_OPTION_1.maxChars}
-          object={textObjects[0] ?? null}
-          isSelected={selectedIndex === 0}
-          onChange={onChange}
-          onDelete={onDelete}
-          onAdd={textObjects.length === 0 ? onAdd : undefined}
-        />
-
-        {/* Slot 2 — only show if slot 1 has text */}
-        {textObjects.length >= 1 && (
-          <TextSlot
-            label={TEXT_OPTION_2.label}
-            maxChars={TEXT_OPTION_2.maxChars}
-            object={textObjects[1] ?? null}
-            isSelected={selectedIndex === 1}
-            onChange={onChange}
-            onDelete={onDelete}
-            onAdd={textObjects.length === 1 ? onAdd : undefined}
-          />
-        )}
-
-        {selected && option && (
-          <div className="rounded-xl border border-line bg-canvas p-3 space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted">{option.label} — Style</p>
-
-            {/* Font picker */}
-            {uniqueFonts.length > 0 && (
-              <FontPicker
-                fonts={uniqueFonts}
-                value={selected.fontFamily}
-                onChange={(family) => onChange({ fontFamily: family })}
-              />
-            )}
-
-            {/* Font size +/- */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-muted shrink-0">Size</span>
-              <button
-                type="button"
-                onClick={() => onChange({ fontSize: Math.max(8, (selected.fontSize ?? 24) - 2) })}
-                className="flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-white text-ink transition-colors hover:bg-canvas shrink-0"
-                aria-label="Decrease font size"
-              >
-                <i className="fa-solid fa-minus text-xs" />
-              </button>
-              <span className="min-w-[2.5rem] text-center text-sm tabular-nums">{selected.fontSize ?? 24}</span>
-              <button
-                type="button"
-                onClick={() => onChange({ fontSize: Math.min(200, (selected.fontSize ?? 24) + 2) })}
-                className="flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-white text-ink transition-colors hover:bg-canvas shrink-0"
-                aria-label="Increase font size"
-              >
-                <i className="fa-solid fa-plus text-xs" />
-              </button>
-            </div>
-
-            {/* Row 2: Colour · Align (single cycle) · Bold · Italic · All Caps */}
-            <div className="flex items-center gap-1.5">
-              {/* Colour swatch */}
-              <input
-                type="color"
-                value={selected.fill}
-                onChange={(e) => onChange({ fill: e.target.value })}
-                className="h-9 w-10 cursor-pointer rounded-lg border border-line p-0.5 shrink-0"
-                aria-label="Text colour"
-                title="Text colour"
-              />
-
-              {/* Alignment — single toggle button */}
-              <button
-                onClick={cycleAlign}
-                title={`Align ${selected.align ?? "left"} (click to cycle)`}
-                className="flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-white text-ink transition-colors hover:bg-canvas shrink-0"
-                aria-label="Cycle text alignment"
-              >
-                <i className={`fa-solid ${ALIGN_ICONS[(selected.align as Align) ?? "left"]} text-sm`} />
-              </button>
-
-              {/* Bold */}
-              <StyleToggle
-                active={selected.fontWeight >= 600}
-                onToggle={() => onChange({ fontWeight: selected.fontWeight >= 600 ? 400 : 700 })}
-                label="Bold"
-                icon="fa-bold"
-              />
-              {/* Italic */}
-              <StyleToggle
-                active={!!selected.italic}
-                onToggle={() => onChange({ italic: !selected.italic })}
-                label="Italic"
-                icon="fa-italic"
-              />
-              {/* All caps */}
-              <StyleToggle
-                active={!!selected.uppercase}
-                onToggle={() => onChange({ uppercase: !selected.uppercase })}
-                label="All caps"
-                icon="fa-font"
-                extra="text-[10px] tracking-widest uppercase"
-              >
-                AA
-              </StyleToggle>
-            </div>
-
-            <Button variant="danger" onClick={onDelete} className="w-full mt-1">
-              Remove
-            </Button>
-          </div>
-        )}
+        {slots.map((slot, i) => {
+          if (i > textObjects.length) return null; // slot 2 appears once slot 1 exists
+          const object = textObjects[i] ?? null;
+          return (
+            <TextSlot
+              key={object?.id ?? `empty-${i}`}
+              label={slot.label}
+              maxChars={slot.maxChars}
+              object={object}
+              fonts={uniqueFonts}
+              isSelected={!!object && object.id === selectedId}
+              onSelect={() => object && onSelect(object.id)}
+              onChange={(patch) => object && onUpdate(object.id, patch)}
+              onDelete={() => object && onDelete(object.id)}
+              onAdd={i === textObjects.length ? onAdd : undefined}
+            />
+          );
+        })}
       </div>
     </Card>
   );
@@ -327,13 +227,15 @@ interface SlotProps {
   label: string;
   maxChars: number;
   object: TextObject | null;
+  fonts: EditorFont[];
   isSelected: boolean;
+  onSelect: () => void;
   onChange: (patch: Partial<TextObject>) => void;
   onDelete: () => void;
   onAdd?: () => void;
 }
 
-function TextSlot({ label, maxChars, object, isSelected, onChange, onAdd }: SlotProps) {
+function TextSlot({ label, maxChars, object, fonts, isSelected, onSelect, onChange, onDelete, onAdd }: SlotProps) {
   const charCount = object?.text?.length ?? 0;
 
   if (!object) {
@@ -348,9 +250,15 @@ function TextSlot({ label, maxChars, object, isSelected, onChange, onAdd }: Slot
     );
   }
 
+  const align = ((object.align as Align) ?? "left") as Align;
+  const size = Math.round(object.fontSize ?? 225);
+
   return (
-    <div className={`rounded-xl border-2 p-3 transition-colors ${isSelected ? "border-ink" : "border-line"}`}>
-      <div className="mb-1.5 flex items-center justify-between">
+    <div
+      onMouseDown={onSelect}
+      className={`space-y-2 rounded-xl border-2 p-3 transition-colors ${isSelected ? "border-ink" : "border-line"}`}
+    >
+      <div className="flex items-center justify-between">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted">{label}</p>
         <span className={`text-xs ${charCount >= maxChars ? "text-red-500" : "text-muted"}`}>
           {charCount}/{maxChars}
@@ -363,10 +271,10 @@ function TextSlot({ label, maxChars, object, isSelected, onChange, onAdd }: Slot
           el.style.height = el.scrollHeight + "px";
         }}
         value={object.text}
+        onFocus={onSelect}
         onChange={(e) => {
           const el = e.target;
-          const val = e.target.value.slice(0, maxChars);
-          onChange({ text: val });
+          onChange({ text: e.target.value.slice(0, maxChars) });
           el.style.height = "auto";
           el.style.height = el.scrollHeight + "px";
         }}
@@ -375,6 +283,81 @@ function TextSlot({ label, maxChars, object, isSelected, onChange, onAdd }: Slot
         placeholder="Enter text…"
         className="w-full resize-none overflow-hidden rounded-lg border border-line bg-white px-3 py-2 text-sm focus:border-ink focus:outline-none"
       />
+
+      {fonts.length > 0 && (
+        <FontPicker fonts={fonts} value={object.fontFamily} onChange={(family) => onChange({ fontFamily: family })} />
+      )}
+
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs text-muted shrink-0">Size</span>
+        <button
+          type="button"
+          onClick={() => onChange({ fontSize: Math.max(FONT_MIN, size - FONT_STEP) })}
+          disabled={size <= FONT_MIN}
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-white text-ink transition-colors hover:bg-canvas disabled:opacity-40 shrink-0"
+          aria-label="Decrease font size"
+        >
+          <i className="fa-solid fa-minus text-xs" />
+        </button>
+        <span className="min-w-[2.5rem] text-center text-sm tabular-nums">{size}</span>
+        <button
+          type="button"
+          onClick={() => onChange({ fontSize: Math.min(FONT_MAX, size + FONT_STEP) })}
+          disabled={size >= FONT_MAX}
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-white text-ink transition-colors hover:bg-canvas disabled:opacity-40 shrink-0"
+          aria-label="Increase font size"
+        >
+          <i className="fa-solid fa-plus text-xs" />
+        </button>
+      </div>
+
+      <div className="flex items-center gap-1.5">
+        <input
+          type="color"
+          value={object.fill}
+          onChange={(e) => onChange({ fill: e.target.value })}
+          className="h-9 w-10 cursor-pointer rounded-lg border border-line p-0.5 shrink-0"
+          aria-label="Text colour"
+          title="Text colour"
+        />
+        <button
+          onClick={() => onChange({ align: ALIGN_ORDER[(ALIGN_ORDER.indexOf(align) + 1) % ALIGN_ORDER.length] })}
+          title={`Align ${align} (click to cycle)`}
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-white text-ink transition-colors hover:bg-canvas shrink-0"
+          aria-label="Cycle text alignment"
+        >
+          <i className={`fa-solid ${ALIGN_ICONS[align]} text-sm`} />
+        </button>
+        <StyleToggle
+          active={object.fontWeight >= 600}
+          onToggle={() => onChange({ fontWeight: object.fontWeight >= 600 ? 400 : 700 })}
+          label="Bold"
+          icon="fa-bold"
+        />
+        <StyleToggle
+          active={!!object.italic}
+          onToggle={() => onChange({ italic: !object.italic })}
+          label="Italic"
+          icon="fa-italic"
+        />
+        <StyleToggle
+          active={!!object.uppercase}
+          onToggle={() => onChange({ uppercase: !object.uppercase })}
+          label="All caps"
+          icon="fa-font"
+          extra="text-[10px] tracking-widest uppercase"
+        >
+          AA
+        </StyleToggle>
+        <button
+          onClick={onDelete}
+          title="Remove text"
+          aria-label="Remove text"
+          className="ml-auto flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-white text-red-600 transition-colors hover:bg-red-50 shrink-0"
+        >
+          <i className="fa-solid fa-trash text-sm" />
+        </button>
+      </div>
     </div>
   );
 }

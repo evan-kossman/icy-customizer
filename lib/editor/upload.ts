@@ -126,10 +126,11 @@ export async function removeBackground(opts: {
   });
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
+    const body = (await res.json().catch(() => ({}))) as { error?: string; reason?: string };
+    if (body.reason) console.warn("[icy] background removal failed:", res.status, body.reason);
     throw new Error(
-      (body as { error?: string }).error ??
-        "Background removal couldn't be completed. Your original image is still available."
+      `${body.error ?? "Background removal couldn't be completed. Your original image is still available."}` +
+        ` (${res.status}${body.reason ? ": " + body.reason : ""})`
     );
   }
 

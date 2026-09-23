@@ -44,3 +44,10 @@
 @media (prefers-reduced-motion: reduce) {
   .icy-customize-btn { transition: none; }
 }
+
+/* Belt-and-braces: never show a Customize button inside the theme's
+   installment / Shop Pay messaging form above the variant pickers. */
+form.installment .icy-customize-btn,
+#product-form-installment .icy-customize-btn {
+  display: none !important;
+}

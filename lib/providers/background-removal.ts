@@ -35,29 +35,29 @@ class RemoveBgProvider implements BackgroundRemovalProvider {
   constructor(private apiKey: string) {}
 
   async remove(input: Buffer, mimeType: string) {
-    const form = new FormData();
-    form.append(
-      "image_file",
-      new Blob([new Uint8Array(input)], { type: mimeType }),
-      "upload"
-    );
-    form.append("size", "auto");
-    form.append("format", "png");
+    // "auto" needs paid credits; free remove.bg keys only have "preview"
+    // credits, so fall back to preview size on 402 (insufficient credits).
+    let res = await this.call(input, mimeType, "auto");
+    if (res.status === 402) res = await this.call(input, mimeType, "preview");
 
-    const res = await fetch("https://api.remove.bg/v1.0/removebg", {
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      throw new Error(`remove.bg failed (${res.status}): ${detail.slice(0, 300)}`);
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+    return { png: buf, provider: this.name };
+  }
+
+  private call(input: Buffer, mimeType: string, size: string) {
+    const form = new FormData();
+    form.append("image_file", new Blob([new Uint8Array(input)], { type: mimeType }), "upload");
+    form.append("size", size);
+    form.append("format", "png");
+    return fetch("https://api.remove.bg/v1.0/removebg", {
       method: "POST",
       headers: { "X-Api-Key": this.apiKey },
       body: form,
     });
-
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      throw new Error(
-        `remove.bg failed (${res.status}): ${detail.slice(0, 300)}`
-      );
-    }
-    const buf = Buffer.from(await res.arrayBuffer());
-    return { png: buf, provider: this.name };
   }
 }
 

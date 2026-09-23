@@ -86,32 +86,43 @@ function ReviewStep({
   const [addState, setAddState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [addError, setAddError] = useState<string | null>(null);
 
+  // Upload preview + print file in the background as soon as the review page
+  // opens, so "Add to cart" only has to wait for whatever is left of it.
+  type FinalizeResult = { previewUrl?: string; printUrl?: string; designPublicId?: string } | null;
+  const finalizeRef = useRef<Promise<FinalizeResult> | null>(null);
+  function startFinalize(): Promise<FinalizeResult> {
+    finalizeRef.current = proxyFetch(`${proxyBase}/api/finalize-design`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, previewDataUrl: previewUrl, printFileDataUrl: printFileUrl }),
+    })
+      .then((r) => (r.ok ? (r.json() as Promise<FinalizeResult>) : null))
+      .catch(() => null)
+      .then((result) => {
+        if (!result) finalizeRef.current = null; // allow a retry on click
+        return result;
+      });
+    return finalizeRef.current;
+  }
+  useEffect(() => {
+    startFinalize();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function addToCart() {
     if (!selectedVariant || !confirmed) return;
     setAddState("loading");
     setAddError(null);
     try {
-      // Step 1: Persist the design and get permanent Blob URLs.
+      // Step 1: Use the finalize upload that started when this page opened.
       let finalPreviewUrl: string | null = previewUrl;
       let finalPrintUrl: string | null = printFileUrl;
       let designPublicId: string | null = null;
-      try {
-        const finalizeRes = await proxyFetch(`${proxyBase}/api/finalize-design`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId,
-            previewDataUrl: previewUrl,
-            printFileDataUrl: printFileUrl,
-          }),
-        });
-        if (finalizeRes.ok) {
-          const data = await finalizeRes.json();
-          finalPreviewUrl = data.previewUrl ?? finalPreviewUrl;
-          finalPrintUrl = data.printUrl ?? finalPrintUrl;
-          designPublicId = data.designPublicId ?? null;
-        }
-      } catch { /* non-fatal: cart add proceeds with local data URLs */ }
+      const data = await (finalizeRef.current ?? startFinalize());
+      if (data) {
+        finalPreviewUrl = data.previewUrl ?? finalPreviewUrl;
+        finalPrintUrl = data.printUrl ?? finalPrintUrl;
+        designPublicId = data.designPublicId ?? null;
+      }
 
       // Step 2: Add to Shopify cart with design URLs as line-item properties.
       // Only include URLs that are already on Blob storage — never send raw
