@@ -177,7 +177,7 @@ Theme app extension is written but never deployed: needs `shopify app deploy`.
 
 ## 6. Environment quirks
 
-- **Build in a scratch copy.** The Claude sandbox mount leaves `.next` and
+- **Build in a scratch copy.** The sandbox mount leaves `.next` and
   `.git/*.lock` undeletable. Build via:
   `tar` the source (minus `node_modules`/`.next`/`.git`) to `$HOME/icybuild`,
   symlink `node_modules`, run `next build` there.
