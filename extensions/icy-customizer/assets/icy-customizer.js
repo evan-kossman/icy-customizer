@@ -301,6 +301,53 @@
   }
 
   // -------------------------------------------------------------------------
+  // 4. Cart previews — show the customer's design instead of the blank shirt
+  // -------------------------------------------------------------------------
+
+  var cartFetchInFlight = false;
+
+  /** Row elements for line item i (1-based) in Dawn-style cart page + drawer. */
+  function cartRowsFor(i) {
+    var rows = [];
+    ["CartItem-" + i, "CartDrawer-Item-" + i].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) rows.push(el);
+    });
+    return rows;
+  }
+
+  function swapCartImages() {
+    // Only work when a cart row with an unprocessed image is on the page.
+    var candidates = document.querySelectorAll(
+      '[id^="CartItem-"] img:not([data-icy-preview]), [id^="CartDrawer-Item-"] img:not([data-icy-preview])'
+    );
+    if (!candidates.length || cartFetchInFlight) return;
+    cartFetchInFlight = true;
+
+    fetch("/cart.js", { headers: { Accept: "application/json" } })
+      .then(function (r) { return r.json(); })
+      .then(function (cart) {
+        (cart.items || []).forEach(function (item, idx) {
+          var props = item.properties || {};
+          var url = props._design_preview_url;
+          cartRowsFor(idx + 1).forEach(function (row) {
+            var imgs = row.querySelectorAll("img:not([data-icy-preview])");
+            Array.prototype.forEach.call(imgs, function (img) {
+              img.setAttribute("data-icy-preview", url ? "true" : "none");
+              if (!url) return;
+              img.removeAttribute("srcset");
+              img.removeAttribute("sizes");
+              img.src = url;
+              img.style.objectFit = "contain";
+            });
+          });
+        });
+      })
+      .catch(function () { /* leave theme images as-is */ })
+      .then(function () { cartFetchInFlight = false; });
+  }
+
+  // -------------------------------------------------------------------------
   // Boot
   // -------------------------------------------------------------------------
 
@@ -309,6 +356,7 @@
       upgradeProductPage();
       upgradeGrids();
       indexVariants();
+      swapCartImages();
     } catch (err) {
       console.warn("[icy] Customizer integration error (theme is unaffected).", err);
     }
