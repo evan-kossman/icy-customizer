@@ -107,16 +107,19 @@
     // Target .product-form__quantity__add__buttons (Dawn's "Add to bag" area)
     // anywhere on the page — not inside a specific form — so this works even
     // when <product-form> renders its children after our first run().
-    var correctContainer = document.querySelector(
-      ".product-form__quantity__add__buttons, .product-form__buttons"
-    );
+    // Prefer the inner Dawn wrapper; only fall back to the outer one.
+    var correctContainer =
+      document.querySelector(".product-form__quantity__add__buttons") ||
+      document.querySelector(".product-form__buttons");
     if (correctContainer && !correctContainer.querySelector(".icy-customize-btn--block")) {
       var button = makeButton(current.handle, current.id, "icy-customize-btn--block");
       var anchor = correctContainer.querySelector(
         'button[type="submit"], input[type="submit"], [name="add"]'
       );
-      if (anchor) {
-        correctContainer.insertBefore(button, anchor);
+      // The submit may be nested deeper than the container, so insert
+      // relative to its real parent (insertBefore throws otherwise).
+      if (anchor && anchor.parentNode) {
+        anchor.parentNode.insertBefore(button, anchor);
       } else {
         correctContainer.insertBefore(button, correctContainer.firstChild);
       }
