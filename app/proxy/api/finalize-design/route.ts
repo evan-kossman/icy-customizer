@@ -3,13 +3,14 @@ import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { ProxyAuthError, requireProxyContext } from "@/lib/shopify/proxy-context";
 import { SessionError, requireOwnedSession } from "@/lib/session";
-import { putObject, StorageKeys } from "@/lib/storage";
+import { signUpload, StorageKeys } from "@/lib/storage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 // Print files can be large — allow up to 30 s
 export const maxDuration = 30;
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function dataUrlToBuffer(dataUrl: string): { buffer: Buffer; contentType: string } {
   const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
   if (!match) throw new Error("Invalid data URL");
@@ -28,16 +29,25 @@ function dataUrlToBuffer(dataUrl: string): { buffer: Buffer; contentType: string
  * Called by the browser immediately before /cart/add.js so the order carries
  * the correct URLs even if the customer never returns to the customizer.
  */
+/**
+ * The browser uploads the flat preview JPEG and the flat 300-DPI print PNG
+ * straight to Vercel Blob, so large print files never hit the ~4.5 MB
+ * function body limit.
+ *
+ *  POST { action: "tokens", sessionId }
+ *    -> { preview: { key, clientToken }, print: { key, clientToken } }
+ *  POST { action: "complete", sessionId, previewUrl?, printUrl? }
+ *    -> { previewUrl, printUrl, designPublicId }  (marks the session in_cart)
+ */
 export async function POST(req: NextRequest) {
   try {
     const ctx = await requireProxyContext(req);
-
     const body = (await req.json()) as {
+      action?: "tokens" | "complete";
       sessionId: string;
-      previewDataUrl?: string | null;
-      printFileDataUrl?: string | null;
+      previewUrl?: string | null;
+      printUrl?: string | null;
     };
-
     if (!body.sessionId) {
       return NextResponse.json({ error: "sessionId required" }, { status: 400 });
     }
@@ -49,30 +59,20 @@ export async function POST(req: NextRequest) {
       customerId: ctx.customerId,
     });
 
-    // Upload images in parallel; skip any that weren't provided.
-    const uploads: Array<Promise<{ key: "preview" | "print"; url: string }>> = [];
-
-    if (body.previewDataUrl) {
-      const { buffer, contentType } = dataUrlToBuffer(body.previewDataUrl);
-      const key = StorageKeys.preview(session.id);
-      uploads.push(
-        putObject(key, buffer, contentType).then((url) => ({ key: "preview" as const, url }))
-      );
+    if (body.action === "tokens") {
+      const [preview, print] = await Promise.all([
+        signUpload({ key: StorageKeys.derived(session.id, "preview", "jpg"), contentType: "image/jpeg" }),
+        signUpload({ key: StorageKeys.derived(session.id, "print", "png"), contentType: "image/png" }),
+      ]);
+      return NextResponse.json({ preview, print });
     }
 
-    if (body.printFileDataUrl) {
-      const { buffer, contentType } = dataUrlToBuffer(body.printFileDataUrl);
-      const key = StorageKeys.production(session.id);
-      uploads.push(
-        putObject(key, buffer, contentType).then((url) => ({ key: "print" as const, url }))
-      );
-    }
+    // action === "complete": only accept URLs on our own Blob store.
+    const isBlob = (u?: string | null) =>
+      !!u && /^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\//i.test(u);
+    const previewUrl = isBlob(body.previewUrl) ? body.previewUrl! : null;
+    const printUrl = isBlob(body.printUrl) ? body.printUrl! : null;
 
-    const results = await Promise.all(uploads);
-    const previewUrl = results.find((r) => r.key === "preview")?.url ?? null;
-    const printUrl = results.find((r) => r.key === "print")?.url ?? null;
-
-    // Persist URLs and mark submitted so autosave no longer overwrites.
     await db
       .update(schema.designSessions)
       .set({
@@ -82,11 +82,7 @@ export async function POST(req: NextRequest) {
       })
       .where(eq(schema.designSessions.id, session.id));
 
-    return NextResponse.json({
-      previewUrl,
-      printUrl,
-      designPublicId: session.publicId,
-    });
+    return NextResponse.json({ previewUrl, printUrl, designPublicId: session.publicId });
   } catch (err) {
     if (err instanceof ProxyAuthError)
       return NextResponse.json({ error: err.message }, { status: err.status });

@@ -1,5 +1,6 @@
 "use client";
 import { proxyFetch } from "@/lib/client-token";
+import { put } from "@vercel/blob/client";
 
 import { useEffect, useRef, useState } from "react";
 import Customizer from "@/components/editor/Customizer";
@@ -91,18 +92,49 @@ function ReviewStep({
   type FinalizeResult = { previewUrl?: string; printUrl?: string; designPublicId?: string } | null;
   const finalizeRef = useRef<Promise<FinalizeResult> | null>(null);
   function startFinalize(): Promise<FinalizeResult> {
-    finalizeRef.current = proxyFetch(`${proxyBase}/api/finalize-design`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId, previewDataUrl: previewUrl, printFileDataUrl: printFileUrl }),
-    })
-      .then((r) => (r.ok ? (r.json() as Promise<FinalizeResult>) : null))
-      .catch(() => null)
+    finalizeRef.current = finalizeDesign()
+      .catch((err) => {
+        console.warn("[icy] finalize failed", err);
+        return null;
+      })
       .then((result) => {
         if (!result) finalizeRef.current = null; // allow a retry on click
         return result;
       });
     return finalizeRef.current;
+  }
+
+  /** Uploads the flat preview + print images straight to Blob, then records them. */
+  async function finalizeDesign(): Promise<FinalizeResult> {
+    const api = `${proxyBase}/api/finalize-design`;
+    const post = (payload: object) =>
+      proxyFetch(api, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, ...payload }),
+      });
+
+    const tokRes = await post({ action: "tokens" });
+    if (!tokRes.ok) throw new Error(`tokens ${tokRes.status}`);
+    const tokens = (await tokRes.json()) as {
+      preview: { key: string; clientToken: string };
+      print: { key: string; clientToken: string };
+    };
+
+    const send = async (dataUrl: string | null, t: { key: string; clientToken: string }, type: string) => {
+      if (!dataUrl) return null;
+      const blob = await (await fetch(dataUrl)).blob();
+      const res = await put(t.key, blob, { access: "public", token: t.clientToken, contentType: type });
+      return res.url;
+    };
+    const [uploadedPreview, uploadedPrint] = await Promise.all([
+      send(previewUrl, tokens.preview, "image/jpeg"),
+      send(printFileUrl, tokens.print, "image/png"),
+    ]);
+
+    const done = await post({ action: "complete", previewUrl: uploadedPreview, printUrl: uploadedPrint });
+    if (!done.ok) throw new Error(`complete ${done.status}`);
+    return (await done.json()) as FinalizeResult;
   }
   useEffect(() => {
     startFinalize();
