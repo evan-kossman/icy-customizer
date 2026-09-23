@@ -114,20 +114,30 @@ function ReviewStep({
       } catch { /* non-fatal: cart add proceeds with local data URLs */ }
 
       // Step 2: Add to Shopify cart with design URLs as line-item properties.
+      // Only include URLs that are already on Blob storage — never send raw
+      // data: URIs as cart properties because they can be several MB and
+      // Shopify will reject the cart add with "Cart is too large".
+      const safePreviewUrl = finalPreviewUrl?.startsWith("https://") ? finalPreviewUrl : null;
+      const safePrintUrl = finalPrintUrl?.startsWith("https://") ? finalPrintUrl : null;
+
+      // Shopify variant IDs from Admin API are GIDs like
+      // "gid://shopify/ProductVariant/12345678". Extract just the numeric part.
+      const numericVariantId = Number(selectedVariant.id.replace(/.*\//, ""));
+
       const res = await fetch("/cart/add.js", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           items: [
             {
-              id: Number(selectedVariant.id.replace(/\D/g, "")),
+              id: numericVariantId,
               quantity: 1,
               properties: {
                 _design_id: sessionId,
                 ...(designPublicId ? { _design_public_id: designPublicId } : {}),
                 _design_color: design.color ?? "",
-                ...(finalPreviewUrl ? { _design_preview_url: finalPreviewUrl } : {}),
-                ...(finalPrintUrl ? { _design_print_url: finalPrintUrl } : {}),
+                ...(safePreviewUrl ? { _design_preview_url: safePreviewUrl } : {}),
+                ...(safePrintUrl ? { _design_print_url: safePrintUrl } : {}),
               },
             },
           ],
@@ -146,7 +156,7 @@ function ReviewStep({
 
   const price = selectedVariant
     ? new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(
-        Number(selectedVariant.price) / 100
+        Number(selectedVariant.price)  // Shopify Admin API returns price already in dollars
       )
     : null;
 
