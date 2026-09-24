@@ -109,8 +109,10 @@ export default function CanvasStage({
   // Pivot: keep print-area centre pinned as zoom changes
   const printCx = clipX + clipW / 2;
   const printCy = clipY + clipH / 2;
-  const pivotX = printCx * (1 - zoom);
-  const pivotY = printCy * (1 - zoom);
+  // Zoomed out: identity. Zoomed in: centre the print area in the viewport
+  // (it isn't always centred on the mockup, e.g. the sweatshirt).
+  const pivotX = zoom === 1 ? 0 : stageWidth / 2 - printCx * zoom;
+  const pivotY = zoom === 1 ? 0 : stageHeight / 2 - printCy * zoom;
 
   /**
    * Konva applies scale to the node; we fold that back into the object's own

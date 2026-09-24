@@ -224,8 +224,14 @@ export default function Customizer({
   });
 
   // Two-level zoom: out = full shirt (1×), in = print area fills the viewport.
+  // Fit the whole print area (width AND height) with a small margin.
   const zoom = zoomedIn
-    ? Math.round((geometry.displayWidth / Math.max(geometry.printWidth, 1)) * 100) / 100
+    ? Math.floor(
+        Math.min(
+          geometry.displayWidth / Math.max(geometry.printWidth, 1),
+          geometry.displayHeight / Math.max(geometry.printHeight, 1)
+        ) * 0.92 * 100
+      ) / 100
     : 1;
 
   const saveStatus = useAutosave({
