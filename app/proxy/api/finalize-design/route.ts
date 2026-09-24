@@ -43,7 +43,8 @@ export async function POST(req: NextRequest) {
   try {
     const ctx = await requireProxyContext(req);
     const body = (await req.json()) as {
-      action?: "tokens" | "complete";
+      action?: "tokens" | "preview-tokens" | "complete";
+      count?: number;
       sessionId: string;
       previewUrl?: string | null;
       printUrl?: string | null;
@@ -58,6 +59,17 @@ export async function POST(req: NextRequest) {
       clientToken: req.headers.get("x-icy-client-token"),
       customerId: ctx.customerId,
     });
+
+    // One upload token per colour preview (multi-colour add to cart).
+    if (body.action === "preview-tokens") {
+      const n = Math.min(Math.max(Number(body.count) || 0, 0), 30);
+      const previews = await Promise.all(
+        Array.from({ length: n }, () =>
+          signUpload({ key: StorageKeys.derived(session.id, "preview", "jpg"), contentType: "image/jpeg" })
+        )
+      );
+      return NextResponse.json({ previews });
+    }
 
     if (body.action === "tokens") {
       const [preview, print] = await Promise.all([

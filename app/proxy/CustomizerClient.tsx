@@ -40,30 +40,48 @@ function ReviewStep({
   const mockup: EditorMockup | undefined =
     mockups.find((m) => m.colorName === design.color) ?? mockups[0];
 
-  // Selected option values – seed from design.color for the Colour option
-  const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>(() => {
-    const initial: Record<string, string> = {};
-    for (const opt of product.options) {
-      if (opt.name.toLowerCase() === "color" || opt.name.toLowerCase() === "colour") {
-        initial[opt.name] = design.color ?? opt.values[0] ?? "";
-      } else {
-        initial[opt.name] = opt.values[0] ?? "";
-      }
-    }
-    return initial;
-  });
-
-  // Track which mockup image to show — starts with the canvas snapshot (or
-  // the initial colour mockup) and updates to the new colour mockup when the
-  // user changes the Colour option.
-  const [displayMockupUrl, setDisplayMockupUrl] = useState<string | null>(
-    previewUrl ?? mockup?.url ?? null
+  // Colour is a tab; sizes are quantity steppers within the active colour.
+  const colorOption = product.options.find((o) => /^colou?r$/i.test(o.name)) ?? null;
+  const sizeOption = product.options.find((o) => o !== colorOption) ?? null;
+  const colorValues = colorOption?.values ?? [""];
+  const [activeColor, setActiveColor] = useState<string>(
+    colorValues.includes(design.color ?? "") ? (design.color as string) : colorValues[0]
   );
+  // variant id -> quantity
+  const [qty, setQty] = useState<Record<string, number>>({});
 
-  // Resolve the currently selected variant
-  const selectedVariant: EditorVariant | undefined = product.variants.find((v) =>
-    v.selectedOptions.every((o) => selectedOptions[o.name] === o.value)
-  );
+  const variantFor = (color: string, size: string | null): EditorVariant | undefined =>
+    product.variants.find((v) =>
+      v.selectedOptions.every((o) =>
+        colorOption && o.name === colorOption.name ? o.value === color
+        : sizeOption && o.name === sizeOption.name ? o.value === size
+        : true
+      )
+    );
+  const sizesForColor = (sizeOption?.values ?? [null]).map((size) => ({
+    size,
+    variant: variantFor(activeColor, size),
+  }));
+  const countForColor = (color: string) =>
+    product.variants
+      .filter((v) => !colorOption || v.selectedOptions.some((o) => o.name === colorOption.name && o.value === color))
+      .reduce((n, v) => n + (qty[v.id] ?? 0), 0);
+  const selectedLines = product.variants
+    .filter((v) => (qty[v.id] ?? 0) > 0)
+    .map((v) => ({ variant: v, quantity: qty[v.id] }));
+  const totalItems = selectedLines.reduce((n, l) => n + l.quantity, 0);
+  const totalPrice = selectedLines.reduce((n, l) => n + l.quantity * Number(l.variant.price), 0);
+  const money = (n: number) =>
+    new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(n);
+
+  function setVariantQty(v: EditorVariant, next: number) {
+    const cap = v.inventoryQuantity != null && v.inventoryQuantity > 0 ? v.inventoryQuantity : 99;
+    setQty((q) => ({ ...q, [v.id]: Math.max(0, Math.min(cap, Math.floor(next) || 0)) }));
+  }
+
+  const activeMockup = mockups.find((m) => m.colorName === activeColor) ?? mockup;
+  // Plain mockup for the active colour; the transparent design is overlaid on top.
+  const displayMockupUrl = activeMockup?.url ?? previewUrl ?? null;
 
   // Quality check — flag any uploaded image that's below 150 dpi at its
   // rendered size so we can warn the customer before they commit.
@@ -90,6 +108,7 @@ function ReviewStep({
   const agreementRef = useRef<HTMLLabelElement>(null);
   const [addState, setAddState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [addError, setAddError] = useState<string | null>(null);
+  const [addedCount, setAddedCount] = useState(0);
 
   // Upload preview + print file in the background as soon as the review page
   // opens, so "Add to cart" only has to wait for whatever is left of it.
@@ -161,77 +180,119 @@ function ReviewStep({
       agreementRef.current?.querySelector("input")?.focus({ preventScroll: true });
       return;
     }
-    if (!selectedVariant) return;
+    if (!selectedLines.length) {
+      setAddError("Choose at least one size.");
+      return;
+    }
     setAddState("loading");
     setAddError(null);
     try {
-      // Step 1: Use the finalize upload that started when this page opened.
-      let finalPreviewUrl: string | null = previewUrl;
-      let finalPrintUrl: string | null = printFileUrl;
-      let designPublicId: string | null = null;
+      // Step 1: print file (shared by every colour) — uploaded when the page opened.
       const data = await (finalizeRef.current ?? startFinalize());
-      if (data) {
-        finalPreviewUrl = data.previewUrl ?? finalPreviewUrl;
-        finalPrintUrl = data.printUrl ?? finalPrintUrl;
-        designPublicId = data.designPublicId ?? null;
-      }
+      const printUrl = data?.printUrl?.startsWith("https://") ? data.printUrl : null;
+      const designPublicId = data?.designPublicId ?? null;
 
-      // Step 2: Add to Shopify cart with design URLs as line-item properties.
-      // Only include URLs that are already on Blob storage — never send raw
-      // data: URIs as cart properties because they can be several MB and
-      // Shopify will reject the cart add with "Cart is too large".
-      const safePreviewUrl = finalPreviewUrl?.startsWith("https://") ? finalPreviewUrl : null;
-      const safePrintUrl = finalPrintUrl?.startsWith("https://") ? finalPrintUrl : null;
+      // Step 2: one preview per colour ordered (design composited on that colour).
+      const colors = [...new Set(selectedLines.map((l) => colorOf(l.variant)))];
+      const previewByColor = await colourPreviews(colors);
 
-      // Shopify variant IDs from Admin API are GIDs like
-      // "gid://shopify/ProductVariant/12345678". Extract just the numeric part.
-      const numericVariantId = Number(selectedVariant.id.replace(/.*\//, ""));
-
+      // Step 3: add every size/colour line in a single cart request.
       const res = await fetch("/cart/add.js", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          items: [
-            {
-              id: numericVariantId,
-              quantity: 1,
+          items: selectedLines.map(({ variant, quantity }) => {
+            const color = colorOf(variant);
+            const preview = previewByColor[color] ?? null;
+            return {
+              id: Number(variant.id.replace(/.*\//, "")),
+              quantity,
               properties: {
                 _design_id: sessionId,
                 ...(designPublicId ? { _design_public_id: designPublicId } : {}),
-                _design_color: design.color ?? "",
-                ...(safePreviewUrl ? { _design_preview_url: safePreviewUrl } : {}),
-                ...(safePrintUrl ? { _design_print_url: safePrintUrl } : {}),
+                _design_color: color,
+                ...(preview ? { _design_preview_url: preview } : {}),
+                ...(printUrl ? { _design_print_url: printUrl } : {}),
               },
-            },
-          ],
+            };
+          }),
         }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.description ?? "Could not add to cart.");
       }
+      setAddedCount((n) => n + totalItems);
+      setQty({});
       setAddState("success");
-      // This design is in the cart — the next visit starts a fresh one.
+      // The design is in the cart — a refresh or next visit starts fresh.
       safeRemove(localStorage, sessionKey(product.id));
       safeRemove(localStorage, `icy:state:${sessionId}`);
-      safeRemove(sessionStorage, `icy:final:${sessionId}`);
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "Something went wrong.");
       setAddState("error");
     }
   }
 
-  const price = selectedVariant
-    ? new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(
-        Number(selectedVariant.price)  // Shopify Admin API returns price already in dollars
-      )
-    : null;
+  function colorOf(v: EditorVariant): string {
+    return (colorOption && v.selectedOptions.find((o) => o.name === colorOption.name)?.value) || design.color || "";
+  }
+
+  // Composite the transparent design over each colour's mockup and upload it,
+  // so the cart shows the right colour. Cached per colour for repeat adds.
+  const previewCache = useRef<Record<string, string>>({});
+  async function colourPreviews(colors: string[]): Promise<Record<string, string>> {
+    const missing = colors.filter((c) => !previewCache.current[c]);
+    if (missing.length && designOnlyUrl) {
+      try {
+        const tokRes = await proxyFetch(`${proxyBase}/api/finalize-design`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId, action: "preview-tokens", count: missing.length }),
+        });
+        if (!tokRes.ok) throw new Error(`preview tokens ${tokRes.status}`);
+        const { previews } = (await tokRes.json()) as { previews: { key: string; clientToken: string }[] };
+        const design = await loadImage(designOnlyUrl);
+        await Promise.all(
+          missing.map(async (color, i) => {
+            const m = mockups.find((mm) => mm.colorName === color);
+            if (!m) return;
+            const shirt = await loadImage(m.url);
+            const W = Math.min(shirt.naturalWidth, 1200);
+            const H = Math.round((W * shirt.naturalHeight) / shirt.naturalWidth);
+            const canvas = document.createElement("canvas");
+            canvas.width = W;
+            canvas.height = H;
+            const ctx = canvas.getContext("2d")!;
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, W, H);
+            ctx.drawImage(shirt, 0, 0, W, H);
+            ctx.drawImage(design, 0, 0, W, H);
+            const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/jpeg", 0.85));
+            if (!blob) return;
+            const t = previews[i];
+            const up = await put(t.key, blob, { access: "public", token: t.clientToken, contentType: "image/jpeg" });
+            previewCache.current[color] = up.url;
+          })
+        );
+      } catch (err) {
+        console.warn("[icy] colour previews failed", err);
+      }
+    }
+    // Fallback: the editor snapshot, for the colour it was taken in.
+    const out: Record<string, string> = {};
+    for (const c of colors) {
+      const url = previewCache.current[c];
+      if (url) out[c] = url;
+    }
+    return out;
+  }
 
   return (
     <main className="mx-auto max-w-lg p-4 space-y-6">
       {/* Back */}
       <button
-        onClick={() => onBack(selectedOptions[product.options.find(o => o.name.toLowerCase() === "color" || o.name.toLowerCase() === "colour")?.name ?? ""] || design.color || undefined)}
+        onClick={() => onBack(activeColor || design.color || undefined)}
         className="flex items-center gap-1 text-sm text-muted hover:text-foreground transition-colors"
       >
         <i className="fa-solid fa-arrow-left" />
@@ -241,7 +302,7 @@ function ReviewStep({
       <h1 className="icy-heading">Review your design</h1>
 
       {/* Design preview — mockup for the selected colour with the design overlay on top */}
-      <div className="rounded-xl overflow-hidden border border-border bg-muted/20 relative">
+      <div className="rounded-xl overflow-hidden border border-border bg-white relative">
         {displayMockupUrl && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={displayMockupUrl} alt="Product preview" className="w-full object-contain block" />
@@ -254,45 +315,116 @@ function ReviewStep({
         )}
       </div>
 
-      {/* Option selectors */}
-      {product.options.map((opt) => (
-        <div key={opt.name} className="space-y-1">
-          <label className="block text-sm font-medium">{opt.name}</label>
+      {/* Colour tabs */}
+      {colorOption && (
+        <div className="space-y-2">
+          <h2 className="icy-heading" style={{ fontSize: "1.1rem" }}>Choose colours and sizes</h2>
           <div className="flex flex-wrap gap-2">
-            {opt.values.map((val) => {
-              const active = selectedOptions[opt.name] === val;
+            {colorValues.map((color) => {
+              const m = mockups.find((mm) => mm.colorName === color);
+              const count = countForColor(color);
+              const active = color === activeColor;
               return (
                 <button
-                  key={val}
-                  onClick={() => {
-                    setSelectedOptions((prev) => ({ ...prev, [opt.name]: val }));
-                    const lower = opt.name.toLowerCase();
-                    if (lower === "color" || lower === "colour") {
-                      const newMockup = mockups.find((m) => m.colorName === val);
-                      if (newMockup) setDisplayMockupUrl(newMockup.url);
-                    }
-                  }}
-                  className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
-                    active
-                      ? "border-primary bg-primary/10 text-primary font-medium"
-                      : "border-border hover:border-primary/50"
+                  key={color}
+                  type="button"
+                  onClick={() => setActiveColor(color)}
+                  title={color}
+                  aria-label={`${color}${count ? `, ${count} selected` : ""}`}
+                  aria-pressed={active}
+                  className={`relative h-16 w-16 rounded-lg border-2 bg-white p-1 transition-colors ${
+                    active ? "border-accent" : "border-transparent hover:border-line"
                   }`}
                 >
-                  {val}
+                  {m ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={m.url} alt="" className="h-full w-full object-contain" />
+                  ) : (
+                    <span className="text-xs">{color}</span>
+                  )}
+                  {count > 0 && (
+                    <span className="absolute -right-2 -top-2 grid h-5 min-w-5 place-items-center rounded-full bg-accent px-1 text-[11px] font-semibold text-white">
+                      {count}
+                    </span>
+                  )}
                 </button>
               );
             })}
           </div>
+          <p className="text-sm text-muted">{activeColor}</p>
         </div>
-      ))}
-
-      {/* Price */}
-      {price && (
-        <p className="text-2xl font-bold">
-          {price}{" "}
-          <span className="text-sm font-normal text-muted">CAD</span>
-        </p>
       )}
+
+      {/* Size quantities for the active colour */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {sizesForColor.map(({ size, variant }) => {
+          const n = variant ? qty[variant.id] ?? 0 : 0;
+          const soldOut = !variant || !variant.availableForSale;
+          const left = variant?.inventoryQuantity;
+          return (
+            <div
+              key={size ?? "one"}
+              className={`flex items-center justify-between gap-2 rounded-xl border-2 p-3 ${
+                n > 0 ? "border-accent bg-accent/5" : "border-transparent"
+              } ${soldOut ? "opacity-50" : ""}`}
+            >
+              <div>
+                <p className="font-semibold">{size ?? "One size"}</p>
+                <p className="text-sm text-muted">
+                  {soldOut ? "Sold out" : variant ? money(Number(variant.price)) : ""}
+                </p>
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    disabled={soldOut || n === 0}
+                    onClick={() => variant && setVariantQty(variant, n - 1)}
+                    className="grid h-9 w-9 place-items-center rounded-lg bg-canvas disabled:opacity-40"
+                    aria-label={`Fewer ${size ?? ""}`}
+                  >
+                    <i className="fa-solid fa-minus text-xs" />
+                  </button>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    value={n}
+                    disabled={soldOut}
+                    onChange={(e) => variant && setVariantQty(variant, Number(e.target.value))}
+                    className="h-9 w-12 rounded-lg border border-line text-center"
+                    aria-label={`Quantity ${size ?? ""}`}
+                  />
+                  <button
+                    type="button"
+                    disabled={soldOut}
+                    onClick={() => variant && setVariantQty(variant, n + 1)}
+                    className="grid h-9 w-9 place-items-center rounded-lg bg-canvas disabled:opacity-40"
+                    aria-label={`More ${size ?? ""}`}
+                  >
+                    <i className="fa-solid fa-plus text-xs" />
+                  </button>
+                </div>
+                {n > 0 && left != null && left > 0 && left <= 20 && (
+                  <span className="text-xs text-accent">{left} left</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Totals */}
+      <div className="space-y-1 border-t border-line pt-3">
+        <div className="flex justify-between text-sm">
+          <span>Items:</span>
+          <span>{totalItems}</span>
+        </div>
+        <div className="flex justify-between text-lg font-bold">
+          <span>Total:</span>
+          <span>{money(totalPrice)}</span>
+        </div>
+      </div>
 
       {/* Low-quality image warning */}
       {lowQualityImages.length > 0 && (
@@ -302,13 +434,8 @@ function ReviewStep({
         </Alert>
       )}
 
-      {/* Availability warning */}
-      {selectedVariant && !selectedVariant.availableForSale && (
-        <Alert tone="error">This option is currently out of stock.</Alert>
-      )}
-
       {/* Confirmation checkbox */}
-      {addState !== "success" && (
+      {(
         <div>
           <label
             key={shakeKey}
@@ -338,40 +465,33 @@ function ReviewStep({
         </div>
       )}
 
-      {/* Add to cart / success */}
-      {addState === "success" ? (
-        <div className="space-y-3">
-          <Alert tone="info">Added to your cart!</Alert>
-          <div className="flex gap-3">
-            <Button onClick={() => onBack()} className="flex-1">
-              Keep customizing
-            </Button>
-            <Button
-              onClick={() => { window.location.href = "/cart"; }}
-              className="flex-1"
-            >
-              View cart
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <>
-          {addError && <Alert tone="error">{addError}</Alert>}
-          <Button
-            onClick={addToCart}
-            disabled={
-              !selectedVariant ||
-              !selectedVariant.availableForSale ||
-              addState === "loading"
-            }
-            className="w-full"
-          >
-            {addState === "loading" ? "Adding…" : "Add to Cart"}
-          </Button>
-        </>
+      {/* Add to cart — customers can add more sizes/colours as many times as they like */}
+      {addError && <Alert tone="error">{addError}</Alert>}
+      {addState === "success" && addedCount > 0 && (
+        <Alert tone="info">
+          {addedCount} item{addedCount === 1 ? "" : "s"} added to your cart.{" "}
+          <a href="/cart" className="font-semibold underline">View cart</a>
+        </Alert>
       )}
+      <Button
+        onClick={addToCart}
+        disabled={totalItems === 0 || addState === "loading"}
+        className="w-full"
+      >
+        {addState === "loading" ? "Adding…" : "Add to Cart"}
+      </Button>
     </main>
   );
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`Could not load ${src}`));
+    img.src = src;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -451,7 +571,9 @@ export default function CustomizerClient({
       const res = await proxyFetch(`${proxyBase}/api/session/${stored}`);
       if (!res.ok) throw new Error();
       const s = (await res.json()) as { status: string; expiresAt: string };
-      if (s.status !== "draft" || new Date(s.expiresAt).getTime() < Date.now()) throw new Error();
+      // "in_cart" is set when the review page uploads the print file, before
+      // anything is actually added — so it's still resumable.
+      if (!["draft", "in_cart"].includes(s.status) || new Date(s.expiresAt).getTime() < Date.now()) throw new Error();
     } catch {
       safeRemove(localStorage, sessionKey(productGid));
       return null;

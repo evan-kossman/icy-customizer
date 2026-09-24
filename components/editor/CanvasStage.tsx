@@ -270,6 +270,8 @@ export default function CanvasStage({
       {/* Background layer: shirt mockup + print-area border, all zoomed together. */}
       <Layer listening={false}>
         <Group x={pivotX} y={pivotY} scaleX={zoom} scaleY={zoom}>
+          {/* White backdrop so JPEG previews of transparent mockups aren't black. */}
+          <Rect x={0} y={0} width={stageWidth} height={stageHeight} fill="#ffffff" />
           {mockupImage && (
             <KonvaImage image={mockupImage} width={stageWidth} height={stageHeight} />
           )}
