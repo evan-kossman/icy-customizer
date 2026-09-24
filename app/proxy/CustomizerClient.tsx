@@ -84,6 +84,10 @@ function ReviewStep({
   });
 
   const [confirmed, setConfirmed] = useState(false);
+  // Set when Add to Cart is pressed before the agreement is ticked.
+  const [needsConfirm, setNeedsConfirm] = useState(false);
+  const [shakeKey, setShakeKey] = useState(0);
+  const agreementRef = useRef<HTMLLabelElement>(null);
   const [addState, setAddState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [addError, setAddError] = useState<string | null>(null);
 
@@ -141,7 +145,14 @@ function ReviewStep({
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function addToCart() {
-    if (!selectedVariant || !confirmed) return;
+    if (!confirmed) {
+      setNeedsConfirm(true);
+      setShakeKey((k) => k + 1);
+      agreementRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      agreementRef.current?.querySelector("input")?.focus({ preventScroll: true });
+      return;
+    }
+    if (!selectedVariant) return;
     setAddState("loading");
     setAddError(null);
     try {
@@ -214,7 +225,7 @@ function ReviewStep({
         Back to editor
       </button>
 
-      <h1 className="text-xl font-semibold">Review your design</h1>
+      <h1 className="icy-heading">Review your design</h1>
 
       {/* Design preview — mockup for the selected colour with the design overlay on top */}
       <div className="rounded-xl overflow-hidden border border-border bg-muted/20 relative">
@@ -285,23 +296,40 @@ function ReviewStep({
 
       {/* Confirmation checkbox */}
       {addState !== "success" && (
-        <label
-          className={`flex items-start gap-3 rounded-xl border-2 p-4 cursor-pointer transition-colors ${
-            confirmed ? "border-primary bg-primary/5" : "border-border"
-          }`}
-        >
-          <input
-            type="checkbox"
-            checked={confirmed}
-            onChange={(e) => setConfirmed(e.target.checked)}
-            className="mt-0.5 h-5 w-5 rounded accent-primary"
-          />
-          <span className="text-sm leading-snug">
-            I own or have permission to use this artwork, and I authorize ICY to print it.
-            I&apos;m happy with how it looks.{" "}
-            <span className="font-medium">Good to go.</span>
-          </span>
-        </label>
+        <div>
+          <label
+            key={shakeKey}
+            ref={agreementRef}
+            className={`flex items-start gap-3 rounded-xl border-2 p-4 cursor-pointer transition-colors ${
+              confirmed
+                ? "border-primary bg-primary/5"
+                : needsConfirm
+                  ? "border-red-600 bg-red-50 icy-shake"
+                  : "border-border"
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={confirmed}
+              onChange={(e) => {
+                setConfirmed(e.target.checked);
+                if (e.target.checked) setNeedsConfirm(false);
+              }}
+              aria-invalid={needsConfirm && !confirmed}
+              aria-describedby="icy-agreement-error"
+              className="mt-1 h-5 w-5 shrink-0 rounded accent-primary"
+            />
+            <span className="icy-heading" style={{ fontSize: "1.1rem", lineHeight: 1.25 }}>
+              I own or have permission to use this artwork, and I authorize Icy to print it.
+            </span>
+          </label>
+          {needsConfirm && !confirmed && (
+            <p id="icy-agreement-error" role="alert" className="mt-2 flex items-center gap-2 text-sm font-medium text-red-600">
+              <i className="fa-solid fa-circle-exclamation" />
+              Please tick the box above to confirm before adding to cart.
+            </p>
+          )}
+        </div>
       )}
 
       {/* Add to cart / success */}
@@ -328,7 +356,6 @@ function ReviewStep({
             disabled={
               !selectedVariant ||
               !selectedVariant.availableForSale ||
-              !confirmed ||
               addState === "loading"
             }
             className="w-full"

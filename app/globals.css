@@ -22,3 +22,29 @@ body { color: var(--icy-ink); background: var(--icy-surface); }
   outline: 2px solid var(--icy-accent);
   outline-offset: 2px;
 }
+
+/* Section labels — mirrors the storefront's .product__title / h3 styling. */
+.icy-heading {
+  font-family: var(--icy-font);
+  font-weight: 700;
+  font-style: normal;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  word-break: break-word;
+  max-width: 100%;
+  color: var(--icy-ink);
+  font-size: 1.25rem;
+  margin: 0;
+}
+@media only screen and (min-width: 1100px) {
+  .icy-heading { font-size: 1.375rem; }
+}
+
+/* Nudge when Add to Cart is pressed before the agreement is ticked. */
+@keyframes icy-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+.icy-shake { animation: icy-shake 0.4s ease-in-out; }

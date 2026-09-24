@@ -17,7 +17,7 @@ export function Card({
     <section className="rounded-card border border-line bg-white p-4 shadow-sm">
       {title && (
         <header className="mb-3 flex items-center justify-between gap-2">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-ink">{title}</h2>
+          <h2 className="icy-heading">{title}</h2>
           {action}
         </header>
       )}
