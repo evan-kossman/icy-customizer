@@ -91,6 +91,19 @@ export default function Customizer({
 
   useEffect(() => setState(current), [current]);
 
+  // Persist the full editor state (design + uploaded asset URLs) so a page
+  // refresh restores the design. Assets are Blob URLs, so this stays small.
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        `icy:state:${sessionId}`,
+        JSON.stringify({ design: current.design, assets: current.assets, savedAt: Date.now() })
+      );
+    } catch {
+      /* storage full or blocked — server autosave still applies */
+    }
+  }, [current.design, current.assets, sessionId]);
+
   const [zoomedIn, setZoomedIn] = useState(false);
   const stageRef = useRef<import("konva/lib/Stage").Stage | null>(null);
 
@@ -121,6 +134,14 @@ export default function Customizer({
       // Full preview: shirt + design baked together.
       // Hide the dotted print-area guide so previews show the finished garment.
       const guide = stageRef.current?.findOne(".print-area-border");
+      // Belt-and-braces: hide selection handles even if React hasn't
+      // re-rendered the deselect yet.
+      const transformers = stageRef.current?.find("Transformer") ?? [];
+      transformers.forEach((t) => {
+        (t as import("konva/lib/shapes/Transformer").Transformer).nodes([]);
+        t.visible(false);
+        t.getLayer()?.batchDraw();
+      });
       guide?.visible(false);
       guide?.getLayer()?.batchDraw();
 
@@ -158,6 +179,7 @@ export default function Customizer({
         bgLayer.opacity(1);
         bgLayer.batchDraw();
       }
+      transformers.forEach((t) => t.visible(true));
       if (guide) {
         guide.visible(true);
         guide.getLayer()?.batchDraw();

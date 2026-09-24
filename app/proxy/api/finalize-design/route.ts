@@ -79,6 +79,7 @@ export async function POST(req: NextRequest) {
         ...(previewUrl ? { previewKey: previewUrl } : {}),
         ...(printUrl ? { productionFileKey: printUrl } : {}),
         status: "in_cart",
+        updatedAt: new Date(),
       })
       .where(eq(schema.designSessions.id, session.id));
 

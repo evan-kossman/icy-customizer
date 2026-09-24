@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { ProxyAuthError, requireProxyContext } from "@/lib/shopify/proxy-context";
-import { SessionError, requireOwnedSession } from "@/lib/session";
+import { SessionError, requireOwnedSession, sessionExpiry } from "@/lib/session";
 import { designFingerprint, validateDesign, type DesignDocument } from "@/lib/design";
 
 export const runtime = "nodejs";
@@ -81,6 +81,8 @@ export async function PATCH(
         selectedColor: body.design.color ?? null,
         shopifyVariantId: body.design.baseVariantId ?? null,
         updatedAt: new Date(),
+        // Sliding expiry: an active design never expires mid-edit.
+        expiresAt: sessionExpiry(),
       })
       .where(eq(schema.designSessions.id, session.id));
 

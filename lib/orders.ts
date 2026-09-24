@@ -1,5 +1,6 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { adminGraphQL, getShop } from "@/lib/shopify/admin";
 
 /** Shopify order webhook payload, narrowed to the fields we consume. */
 export interface OrderWebhookPayload {
@@ -90,16 +91,27 @@ export async function recordOrder(shopDomain: string, payload: OrderWebhookPaylo
   }
 
   for (const item of payload.line_items) {
-    const designPublicId = property(item.properties, "_design_id");
-    if (!designPublicId) continue; // not a customized line
+    // The cart sends `_design_id` = internal session id and
+    // `_design_public_id` = public id. Accept either.
+    const rawDesignId = property(item.properties, "_design_id");
+    const rawPublicId = property(item.properties, "_design_public_id");
+    if (!rawDesignId && !rawPublicId) continue; // not a customized line
 
     const sessionRows = await db
-      .select({ id: schema.designSessions.id })
+      .select({ id: schema.designSessions.id, publicId: schema.designSessions.publicId })
       .from(schema.designSessions)
-      .where(eq(schema.designSessions.publicId, designPublicId))
+      .where(
+        rawPublicId
+          ? eq(schema.designSessions.publicId, rawPublicId)
+          : or(
+              eq(schema.designSessions.id, rawDesignId!),
+              eq(schema.designSessions.publicId, rawDesignId!)
+            )
+      )
       .limit(1);
+    const designPublicId = sessionRows[0]?.publicId ?? rawPublicId ?? rawDesignId!;
 
-    await db
+    const insertedLine = await db
       .insert(schema.orderLineItems)
       .values({
         orderId,
@@ -111,7 +123,17 @@ export async function recordOrder(shopDomain: string, payload: OrderWebhookPaylo
         designPublicId,
         productionStatus: "pending",
       })
-      .onConflictDoNothing();
+      .onConflictDoNothing()
+      .returning({ id: schema.orderLineItems.id });
+
+    // First time we've seen this line item: back up the print file into
+    // Shopify Files so the printer has a copy that doesn't depend on the app.
+    const printUrl = property(item.properties, "_design_print_url");
+    if (insertedLine[0] && printUrl?.startsWith("https://")) {
+      await copyToShopifyFiles(shopDomain, printUrl, `${payload.name} – ${item.title} – print file`).catch(
+        (err) => console.error("[orders] Shopify Files copy failed", err)
+      );
+    }
 
     // Ordered sessions are exempt from expiry cleanup.
     if (sessionRows[0]) {
@@ -121,4 +143,21 @@ export async function recordOrder(shopDomain: string, payload: OrderWebhookPaylo
         .where(eq(schema.designSessions.id, sessionRows[0].id));
     }
   }
+}
+
+/** Creates a Shopify Files entry from a public URL (Shopify downloads it). */
+async function copyToShopifyFiles(shopDomain: string, url: string, alt: string) {
+  const shop = await getShop(shopDomain);
+  if (!shop) return;
+  const result = await adminGraphQL<{
+    fileCreate: { userErrors: { message: string }[] };
+  }>(
+    shop,
+    `mutation fileCreate($files: [FileCreateInput!]!) {
+      fileCreate(files: $files) { userErrors { message } }
+    }`,
+    { files: [{ originalSource: url, contentType: "IMAGE", alt: alt.slice(0, 512) }] }
+  );
+  const errs = result.fileCreate?.userErrors ?? [];
+  if (errs.length) throw new Error(errs.map((e) => e.message).join("; "));
 }

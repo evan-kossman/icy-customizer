@@ -96,7 +96,16 @@ function ReviewStep({
   type FinalizeResult = { previewUrl?: string; printUrl?: string; designPublicId?: string } | null;
   const finalizeRef = useRef<Promise<FinalizeResult> | null>(null);
   function startFinalize(): Promise<FinalizeResult> {
+    const cached = safeGet(sessionStorage, `icy:final:${sessionId}`);
+    if (cached && printFileUrl?.startsWith("https://")) {
+      finalizeRef.current = Promise.resolve(JSON.parse(cached) as FinalizeResult);
+      return finalizeRef.current;
+    }
     finalizeRef.current = finalizeDesign()
+      .then((result) => {
+        if (result) safeSet(sessionStorage, `icy:final:${sessionId}`, JSON.stringify(result));
+        return result;
+      })
       .catch((err) => {
         console.warn("[icy] finalize failed", err);
         return null;
@@ -202,6 +211,10 @@ function ReviewStep({
         throw new Error(body.description ?? "Could not add to cart.");
       }
       setAddState("success");
+      // This design is in the cart — the next visit starts a fresh one.
+      safeRemove(localStorage, sessionKey(product.id));
+      safeRemove(localStorage, `icy:state:${sessionId}`);
+      safeRemove(sessionStorage, `icy:final:${sessionId}`);
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "Something went wrong.");
       setAddState("error");
@@ -362,6 +375,21 @@ function ReviewStep({
 }
 
 // ---------------------------------------------------------------------------
+// Storage helpers (never throw — storage can be blocked in private mode)
+// ---------------------------------------------------------------------------
+
+const sessionKey = (productGid: string) => `icy:session:${productGid}`;
+function safeGet(store: Storage, key: string): string | null {
+  try { return store.getItem(key); } catch { return null; }
+}
+function safeSet(store: Storage, key: string, value: string) {
+  try { store.setItem(key, value); } catch { /* ignore */ }
+}
+function safeRemove(store: Storage, key: string) {
+  try { store.removeItem(key); } catch { /* ignore */ }
+}
+
+// ---------------------------------------------------------------------------
 // Session storage helpers
 // ---------------------------------------------------------------------------
 
@@ -411,6 +439,52 @@ export default function CustomizerClient({
   // and is written here before the review step is shown.
   const printFileRef = useRef<string | null>(null);
 
+  /** Returns the stored session for this product if it's still an open draft. */
+  async function resumeSession(productGid: string): Promise<{
+    sessionId: string;
+    editorState: { design: EditorState["design"]; assets: EditorState["assets"]; selectedId: null } | null;
+    review: ReviewPayload | null;
+  } | null> {
+    const stored = safeGet(localStorage, sessionKey(productGid));
+    if (!stored) return null;
+    try {
+      const res = await proxyFetch(`${proxyBase}/api/session/${stored}`);
+      if (!res.ok) throw new Error();
+      const s = (await res.json()) as { status: string; expiresAt: string };
+      if (s.status !== "draft" || new Date(s.expiresAt).getTime() < Date.now()) throw new Error();
+    } catch {
+      safeRemove(localStorage, sessionKey(productGid));
+      return null;
+    }
+
+    let editorState = null;
+    try {
+      const raw = safeGet(localStorage, `icy:state:${stored}`);
+      if (raw) {
+        const saved = JSON.parse(raw) as { design: EditorState["design"]; assets: EditorState["assets"] };
+        editorState = { design: saved.design, assets: saved.assets, selectedId: null as null };
+      }
+    } catch { /* ignore */ }
+
+    // Restore the review step only if its images were already uploaded —
+    // otherwise drop back to the editor (the design itself is never lost).
+    let review: ReviewPayload | null = null;
+    if (new URLSearchParams(window.location.search).get("step") === "review") {
+      try {
+        const raw = safeGet(sessionStorage, `icy:review:${stored}`);
+        const fin = safeGet(sessionStorage, `icy:final:${stored}`);
+        if (raw && fin) {
+          const payload = JSON.parse(raw) as ReviewPayload;
+          const done = JSON.parse(fin) as { previewUrl?: string; printUrl?: string };
+          if (done.printUrl) {
+            review = { ...payload, previewUrl: done.previewUrl ?? payload.previewUrl, printFileUrl: done.printUrl };
+          }
+        }
+      } catch { /* ignore */ }
+    }
+    return { sessionId: stored, editorState, review };
+  }
+
   useEffect(() => {
     let cancelled = false;
 
@@ -427,17 +501,29 @@ export default function CustomizerClient({
         }
         const config = (await configRes.json()) as EditorBootstrap;
 
-        const sessionRes = await proxyFetch(`${proxyBase}/api/session`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ productId: config.product.id }),
-        });
-        if (!sessionRes.ok) throw new Error("Could not start a design session.");
-        const session = (await sessionRes.json()) as { sessionId: string };
+        // Resume this browser's in-progress design for this product, if any.
+        const resumed = await resumeSession(config.product.id);
+        let id = resumed?.sessionId ?? null;
+        if (!id) {
+          const sessionRes = await proxyFetch(`${proxyBase}/api/session`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ productId: config.product.id }),
+          });
+          if (!sessionRes.ok) throw new Error("Could not start a design session.");
+          id = ((await sessionRes.json()) as { sessionId: string }).sessionId;
+          safeSet(localStorage, sessionKey(config.product.id), id);
+        }
 
         if (!cancelled) {
+          if (resumed?.editorState) setLastEditorState(resumed.editorState);
           setBootstrap(config);
-          setSessionId(session.sessionId);
+          setSessionId(id);
+          if (resumed?.review) {
+            printFileRef.current = resumed.review.printFileUrl;
+            setReviewPayload(resumed.review);
+            setStep("review");
+          }
         }
       } catch (err) {
         if (!cancelled) {
@@ -542,6 +628,8 @@ export default function CustomizerClient({
             setLastEditorState({ design: state.design, assets: state.assets, selectedId: null });
             // Keep the large print file in a ref — never in sessionStorage.
             printFileRef.current = state.printFileUrl ?? null;
+            // New capture — any earlier uploaded images are stale.
+            safeRemove(sessionStorage, `icy:final:${sessionId}`);
             const payload: ReviewPayload = {
               design: state.design,
               assets: state.assets,
@@ -553,7 +641,9 @@ export default function CustomizerClient({
               `icy:review:${sessionId}`,
               JSON.stringify(payload)
             );
-            window.history.pushState({ step: "review" }, "", `?step=review`);
+            const url = new URL(window.location.href);
+            url.searchParams.set("step", "review");
+            window.history.pushState({ step: "review" }, "", url.toString());
             window.dispatchEvent(new CustomEvent("icy:continue"));
           }}
         />
