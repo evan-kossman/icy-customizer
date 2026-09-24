@@ -252,14 +252,14 @@ async function main() {
 
     if (HOODIE_BLACK) {
       const asset = await uploadMockup(shop.id, HOODIE_BLACK, "hoodie-black");
-      await upsertMockup({ productConfigId: configId, colorName: "Black", colorHex: "#000000", shopifyVariantId: TEE_BLACK_VARIANT, ...asset });
+      await upsertMockup({ productConfigId: configId, colorName: "Black", colorHex: "#000000", shopifyVariantId: HOODIE_BLACK_VARIANT, ...asset });
     } else {
       console.log("  — No --hoodie-black supplied; skipping mockup upload.");
     }
 
     if (HOODIE_WHITE) {
       const asset = await uploadMockup(shop.id, HOODIE_WHITE, "hoodie-white");
-      await upsertMockup({ productConfigId: configId, colorName: "White", colorHex: "#FFFFFF", shopifyVariantId: TEE_WHITE_VARIANT, ...asset });
+      await upsertMockup({ productConfigId: configId, colorName: "White", colorHex: "#FFFFFF", shopifyVariantId: HOODIE_WHITE_VARIANT, ...asset });
     } else {
       console.log("  — No --hoodie-white supplied; skipping mockup upload.");
     }
