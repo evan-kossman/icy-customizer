@@ -119,6 +119,11 @@ export default function Customizer({
     let printFileUrl: string | null = null;
     try {
       // Full preview: shirt + design baked together.
+      // Hide the dotted print-area guide so previews show the finished garment.
+      const guide = stageRef.current?.findOne(".print-area-border");
+      guide?.visible(false);
+      guide?.getLayer()?.batchDraw();
+
       const dataUrl = stageRef.current?.toDataURL({
         mimeType: "image/jpeg",
         quality: 0.8,
@@ -152,6 +157,10 @@ export default function Customizer({
 
         bgLayer.opacity(1);
         bgLayer.batchDraw();
+      }
+      if (guide) {
+        guide.visible(true);
+        guide.getLayer()?.batchDraw();
       }
     } catch {
       /* canvas might be tainted by cross-origin assets — skip preview */

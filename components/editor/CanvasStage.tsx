@@ -273,6 +273,7 @@ export default function CanvasStage({
           )}
           {/* Border stroke/dash compensated so visual thickness stays constant. */}
           <Rect
+            name="print-area-border"
             x={clipX}
             y={clipY}
             width={clipW}

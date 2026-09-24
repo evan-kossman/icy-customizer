@@ -316,19 +316,12 @@ function ReviewStep({
                 if (e.target.checked) setNeedsConfirm(false);
               }}
               aria-invalid={needsConfirm && !confirmed}
-              aria-describedby="icy-agreement-error"
               className="mt-1 h-5 w-5 shrink-0 rounded accent-primary"
             />
             <span className="icy-heading" style={{ fontSize: "1.1rem", lineHeight: 1.25 }}>
               I own or have permission to use this artwork, and I authorize Icy to print it.
             </span>
           </label>
-          {needsConfirm && !confirmed && (
-            <p id="icy-agreement-error" role="alert" className="mt-2 flex items-center gap-2 text-sm font-medium text-red-600">
-              <i className="fa-solid fa-circle-exclamation" />
-              Please tick the box above to confirm before adding to cart.
-            </p>
-          )}
         </div>
       )}
 
