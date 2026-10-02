@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { cached, MINUTE } from "@/lib/cache";
 import {
   ProxyAuthError,
   requireProductConfig,
@@ -53,13 +54,13 @@ export async function GET(req: NextRequest) {
 
     const config = await requireProductConfig(ctx.shop.id, product.id);
 
-    const mockupRows = await db
+    const mockupRows = await cached(`mockups:${config.id}`, MINUTE, () => db
       .select()
       .from(schema.mockups)
       .where(eq(schema.mockups.productConfigId, config.id))
-      .orderBy(schema.mockups.sortOrder);
+      .orderBy(schema.mockups.sortOrder));
 
-    const fontRows = config.fontIds.length
+    const fontRows = await cached(`fonts:${config.id}`, MINUTE, async () => config.fontIds.length
       ? await db
           .select()
           .from(schema.fonts)
@@ -75,7 +76,7 @@ export async function GET(req: NextRequest) {
           .select()
           .from(schema.fonts)
           .where(and(eq(schema.fonts.shopId, ctx.shop.id), eq(schema.fonts.enabled, true)))
-          .orderBy(schema.fonts.sortOrder);
+          .orderBy(schema.fonts.sortOrder));
 
     const printArea = buildPrintArea(config);
 

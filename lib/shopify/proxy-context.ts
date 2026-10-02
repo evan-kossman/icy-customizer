@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { getShop, type ShopContext } from "./admin";
+import { cached, MINUTE } from "../cache";
 import { verifyAppProxySignature } from "./verify";
 
 /**
@@ -49,7 +50,7 @@ export async function requireProxyContext(req: NextRequest): Promise<ProxyContex
  * never be opened against an arbitrary product.
  */
 export async function requireProductConfig(shopId: string, shopifyProductId: string) {
-  const rows = await db
+  const rows = await cached(`config:${shopId}:${shopifyProductId}`, MINUTE, () => db
     .select()
     .from(schema.productConfigs)
     .where(
@@ -59,7 +60,7 @@ export async function requireProductConfig(shopId: string, shopifyProductId: str
         eq(schema.productConfigs.enabled, true)
       )
     )
-    .limit(1);
+    .limit(1));
 
   const config = rows[0];
   if (!config) {

@@ -213,6 +213,8 @@ function ReviewStep({
                 _design_color: color,
                 ...(preview ? { _design_preview_url: preview } : {}),
                 ...(printUrl ? { _design_print_url: printUrl } : {}),
+                // Riverr placement id: 1 = front (all current products print front only).
+                _design_placement: "1",
               },
             };
           }),

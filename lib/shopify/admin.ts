@@ -1,3 +1,4 @@
+import { cached, MINUTE } from "../cache";
 import { env } from "../env";
 import { decrypt } from "../crypto";
 import { db, schema } from "@/db";
@@ -22,7 +23,11 @@ export interface ShopContext {
 }
 
 /** Loads an installed shop and decrypts its token. */
-export async function getShop(domain: string): Promise<ShopContext | null> {
+export function getShop(domain: string): Promise<ShopContext | null> {
+  return cached(`shop:${domain}`, MINUTE, () => loadShop(domain));
+}
+
+async function loadShop(domain: string): Promise<ShopContext | null> {
   const rows = await db
     .select()
     .from(schema.shops)

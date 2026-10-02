@@ -580,9 +580,9 @@ export default function Customizer({
         </span>
       </header>
 
-      <div className="mx-auto grid max-w-7xl gap-4 p-4 lg:grid-cols-[1fr_380px] lg:h-[calc(100vh-53px)] lg:overflow-hidden">
+      <div className="mx-auto grid max-w-7xl grid-cols-[minmax(0,1fr)] gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_380px] lg:h-[calc(100vh-53px)] lg:overflow-hidden">
         {/* Canvas */}
-        <div className="space-y-3 lg:overflow-y-auto lg:pb-4">
+        <div className="min-w-0 space-y-3 lg:overflow-y-auto lg:pb-4">
           <div className="rounded-card border border-line bg-surface p-3">
             <div ref={containerRef} className="mx-auto w-full max-w-[560px] lg:max-w-[420px] xl:max-w-[480px] overflow-hidden">
               {containerWidth > 0 && (
@@ -639,7 +639,7 @@ export default function Customizer({
         </div>
 
         {/* Controls */}
-        <div className="flex flex-col lg:overflow-hidden lg:h-full">
+        <div className="flex min-w-0 flex-col lg:overflow-hidden lg:h-full">
         <div className="flex-1 space-y-4 overflow-y-auto pb-4">
           <ColorPanel
             mockups={mockups}

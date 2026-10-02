@@ -48,3 +48,9 @@ body { color: var(--icy-ink); background: var(--icy-surface); }
   40%, 80% { transform: translateX(6px); }
 }
 .icy-shake { animation: icy-shake 0.4s ease-in-out; }
+
+/* iOS Safari zooms the page when a field under 16px is focused, which shifts
+   the canvas sideways. Keep form fields at 16px on phones. */
+@media (max-width: 640px) {
+  input, textarea, select { font-size: 16px !important; }
+}

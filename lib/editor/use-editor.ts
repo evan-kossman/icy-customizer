@@ -214,12 +214,40 @@ export function useAutosave(opts: {
         // Local copy still holds the work; surface that rather than alarming.
         setStatus("local-only");
       }
-    }, 1500);
+    }, 5000);
 
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
   }, [opts.design, opts.enabled, opts.proxyBase, opts.sessionId, opts.version]);
+
+  // Server saves are batched (5 s after the last change). Flush immediately
+  // when the tab is hidden or closed so nothing unsaved is left behind.
+  const latest = useRef(opts);
+  latest.current = opts;
+  useEffect(() => {
+    function flush() {
+      const o = latest.current;
+      if (!o.enabled || !o.sessionId) return;
+      const payload = JSON.stringify(o.design);
+      if (payload === lastSent.current) return;
+      if (timer.current) clearTimeout(timer.current);
+      lastSent.current = payload;
+      proxyFetch(`${o.proxyBase}/api/session/${o.sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ design: o.design }),
+        keepalive: true,
+      }).catch(() => { lastSent.current = ""; });
+    }
+    const onVisibility = () => { if (document.visibilityState === "hidden") flush(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", flush);
+    };
+  }, []);
 
   return status;
 }

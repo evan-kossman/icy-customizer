@@ -1,0 +1,182 @@
+
+=== OrderUpdateInput (INPUT_OBJECT) ===
+  cancelled: Boolean
+  shipped: Boolean
+
+=== Order (OBJECT) ===
+  id: ID!
+  platformOrderId: String!
+  uid: String
+  enterpriseId: String
+  shopId: String
+  shopName: String
+  orderNumber: String
+  platformId: String
+  currencyCode: String
+  mapped: String
+  cancelled: Boolean
+  shipped: Boolean
+  draft: Boolean
+  totalTax: Float
+  totalDiscount: Float
+  totalPrice: Float
+  shippingCost: Float
+  grandTotal: Float
+  createdAt: Timestamp
+  updatedAt: Timestamp
+  shippingAddress: Address
+  orderItems: [OrderItem!]
+  shippingOptions: ShippingOptions
+  shippingLabel: ShippingLabel
+  cost: OrderCost
+  shipments: [Shipment!]
+  status: String
+  statusTags: [String]
+
+=== Placements (OBJECT) ===
+  placements: [Placement!]!
+  activePlacements: [Placement!]!
+  discounts: [PlacementDiscount!]!
+
+=== DecorationMethod (OBJECT) ===
+  id: String!
+  name: String!
+
+=== Shop (OBJECT) ===
+  id: ID!
+  name: String
+  platformId: String
+  platformName: String
+  platformShopId: String
+  uid: String!
+  enterpriseId: String!
+  url: String
+
+=== OrderItem (OBJECT) ===
+  id: ID!
+  name: String
+  uid: String
+  enterpriseId: String
+  orderId: String
+  productId: String
+  platformId: String
+  shopId: String
+  variantId: String
+  platformOrderId: String
+  platformOrderItemId: String
+  cancelled: Boolean
+  shipped: Boolean
+  draft: Boolean
+  ignored: Boolean
+  purchaseOrder: Boolean
+  discount: Float
+  price: Float
+  subtotal: Float
+  tax: Float
+  total: Float
+  quantity: Int
+  index: Int
+  decorationMethod: String
+  decorationMethods: [String!]
+  variant: Variant
+  purchaseOrderData: VariantMapping
+  image: Image
+  images: [Image!]
+  cost: OrderItemCost
+
+=== OrderCost (OBJECT) ===
+  printingCost: Float
+  fulfillmentCost: Float
+  shippingCost: Float
+  discount: Float
+  totalCost: Float
+  customerPaid: Float
+  profit: Float
+  estimated: Boolean
+  currency: String
+
+=== Placement (OBJECT) ===
+  id: String!
+  name: String!
+
+=== PlacementDiscount (OBJECT) ===
+  id: String!
+  value: Float
+
+=== Image (OBJECT) ===
+  id: ID
+  url: String!
+  name: String
+  uid: String
+  enterpriseId: String
+  placement: String
+  type: ImageType
+
+=== OrderItemCost (OBJECT) ===
+  printingCost: Float
+  fulfillmentCost: Float
+  totalCost: Float
+  currency: String
+
+=== ImageType (ENUM) ===
+  = printing
+  = mockup
+
+=== shops ===
+{
+ "data": {
+  "getAllShops": [
+   {
+    "id": "f4DowxqlCr9hGbEIk2ma",
+    "name": "Thrownback"
+   }
+  ]
+ }
+}
+
+=== placements ===
+{
+ "data": {
+  "getPlacements": {
+   "__typename": "Placements"
+  }
+ }
+}
+
+=== decoration methods ===
+{
+ "data": {
+  "getDecorationMethods": [
+   {
+    "__typename": "DecorationMethod"
+   },
+   {
+    "__typename": "DecorationMethod"
+   },
+   {
+    "__typename": "DecorationMethod"
+   },
+   {
+    "__typename": "DecorationMethod"
+   },
+   {
+    "__typename": "DecorationMethod"
+   },
+   {
+    "__typename": "DecorationMethod"
+   },
+   {
+    "__typename": "DecorationMethod"
+   },
+   {
+    "__typename": "DecorationMethod"
+   },
+   {
+    "__typename": "DecorationMethod"
+   },
+   {
+    "__typename": "DecorationMethod"
+   }
+  ]
+ }
+}

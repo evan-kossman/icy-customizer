@@ -32,6 +32,13 @@ function property(
  * the whole order.
  */
 export async function recordOrder(shopDomain: string, payload: OrderWebhookPayload) {
+  // Most store orders have nothing customized — skip them without touching
+  // the database, so ordinary order traffic can never fail this webhook.
+  const hasCustom = (payload.line_items ?? []).some(
+    (i) => property(i.properties, "_design_id") || property(i.properties, "_design_public_id")
+  );
+  if (!hasCustom) return;
+
   const shopRows = await db
     .select({ id: schema.shops.id })
     .from(schema.shops)

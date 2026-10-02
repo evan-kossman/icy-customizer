@@ -1,0 +1,73 @@
+
+=== QUERIES ===
+getShop(id: ID!): Shop!
+getAllShops(): [Shop!]!
+getOrder(id: ID!): Order!
+getOrders(shopId: ID, shipped: Boolean, cancelled: Boolean, createdAfter: TimestampInput, updatedAfter: TimestampInput, limit: Int): [Order!]!
+getProduct(id: ID!): Product!
+getProducts(shopId: ID, limit: Int): [Product!]!
+getShipment(orderId: ID!): Shipment
+getShipments(shopId: ID, orderIds: [ID!], status: String, carrier: String, limit: Int): [Shipment!]!
+getBlankProducts(limit: Int): [BlankVariantDetail!]
+getPlacements(): Placements!
+getDecorationMethods(): [DecorationMethod!]!
+getAvailableShippingSpeeds(): [ShippingSpeed!]!
+getShippingSpeeds(): [SelectedShippingSpeed!]!
+getShippingPrices(): [ShippingPriceOutput!]!
+quoteOrderFromGtin(input: OrderQuoteFromGtinInput!): OrderQuote!
+webhookEndpoints(): [WebhookEndpoint!]!
+webhookEndpoint(id: ID!): WebhookEndpoint
+webhookDeliveries(endpointId: ID!, limit: Int): [WebhookDelivery!]!
+
+=== MUTATIONS ===
+createShop(input: ShopCreateInput!): Shop!
+updateShop(id: ID!, input: ShopUpdateInput!): Shop!
+deleteShop(id: ID!): Boolean!
+createOrder(input: OrderCreateInput!): Order!
+updateOrder(id: ID!, input: OrderUpdateInput!): Order!
+createProduct(input: ProductCreateInput!): Product!
+updateProduct(id: ID!, input: ProductUpdateInput!): Product!
+deleteProduct(id: ID!): Boolean!
+createOrderFromGtin(input: OrderCreateFromGtinInput!): Order!
+saveShippingSpeed(shippingSpeed: ShippingSpeedInput!): SelectedShippingSpeed!
+deleteShippingSpeed(id: ID!): ID!
+saveShippingPrice(shippingPrice: ShippingPriceInput!): ShippingPriceOutput!
+updateShippingPrice(id: ID!, shippingPrice: ShippingPriceInput!): ShippingPriceOutput!
+deleteShippingPrice(id: ID!): ID!
+addShippingUpgradeToOrder(orderId: ID!, id: ID!, shippingCost: ShippingCostInput): ShippingUpgrade!
+createWebhookEndpoint(input: WebhookEndpointCreateInput!): WebhookEndpoint!
+updateWebhookEndpoint(id: ID!, input: WebhookEndpointUpdateInput!): WebhookEndpoint!
+deleteWebhookEndpoint(id: ID!): Boolean!
+rotateWebhookEndpointSecret(id: ID!): WebhookEndpoint!
+sendTestWebhookEvent(id: ID!): WebhookTestResult!
+
+=== OrderCreateFromGtinInput ===
+  orderNumber: String!
+  shopId: String!
+  cancelled: Boolean
+  shipped: Boolean
+  shippingCost: Float
+  shippingAddress: AddressInput!
+  shippingOptions: ShippingOptionsInput
+  shippingLabel: ShippingLabelInput
+  orderItems: [OrderItemGtinInput!]!
+
+=== GtinOrderItemInput ===
+
+=== AddressInput ===
+  name: String
+  address1: String
+  address2: String
+  city: String
+  state: String
+  zip: String
+  country: String
+  countryCode: String
+  phone: String
+
+=== OrderImageInput ===
+
+=== ShippingOptionsInput ===
+  carrierCode: String
+  serviceCode: String
+  packageCode: String
